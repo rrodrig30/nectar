@@ -62,6 +62,33 @@ def test_load_rules_parses_yaml_into_typed_models(tmp_path):
     assert fiber.severity == "moderate"
 
 
+def test_conditions_dir_honors_env_override(monkeypatch, tmp_path):
+    from nutriscrape.pipeline import _conditions_dir
+
+    monkeypatch.setenv("NUTRISCRAPE_CONDITIONS", str(tmp_path))
+    assert _conditions_dir() == tmp_path
+
+
+def test_conditions_dir_finds_shared_nectar_conditions(monkeypatch):
+    """With no env override and no config/conditions staged, the resolver falls through to the
+    monorepo sibling nectar/config/conditions so `make knowledge` loads the clinical rule KB."""
+    from nutriscrape.knowledge.loaders import load_rules
+    from nutriscrape.pipeline import _conditions_dir
+
+    monkeypatch.delenv("NUTRISCRAPE_CONDITIONS", raising=False)
+    conditions_dir = _conditions_dir()
+    assert conditions_dir is not None
+    assert (conditions_dir / "ckd.yaml").is_file()
+
+    # The CKD potassium ceiling is the rule the /recommend potassium limit relies on.
+    rules = load_rules(conditions_dir)
+    potassium = next(
+        r for r in rules if r.rule_id.startswith("ckd:") and r.acts_on == "potassium"
+    )
+    assert potassium.direction == "limit"
+    assert potassium.safety_critical is True
+
+
 def test_load_transforms_from_real_config():
     config_dir = Path(__file__).resolve().parents[2] / "config"
     coeffs = load_transforms(config_dir)

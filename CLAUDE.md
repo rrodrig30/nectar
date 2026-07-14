@@ -84,12 +84,28 @@ stages run every real function that exists and log the specific missing upstream
 - Clinical values are config, not code: `nutriscrape/config/` (nutrients, sources, transforms,
   retention, attributes) and `nectar/config/` (equations.yaml, derivation/, conditions/).
 
-## rules.txt
-`rules.txt` is a strict "no placeholders / no mock code / everything functions as designed" charter,
-and several project subagents (e.g. compliance-enforcer) enforce it. Reconcile it with reality: the
-empty `src/` stubs are the intended phased-build starting point, and the numeric clinical/config
-values are deliberately ILLUSTRATIVE pending clinician review. Implement real logic when building a
-phase; do not "fix" the scaffold or invent clinical numbers to satisfy the rule.
+## rules.txt [ENFORCED]
+The engineering charter is @rules.txt (imported here, so it is in context on every task). It is a
+strict "no placeholders / no mock code / no fallbacks / everything functions as designed" contract.
+It is binding, not aspirational.
+
+**Enforcement (every task):**
+- Ship only real, working code. No placeholder, mock, demo, simplified, stubbed, or partially
+  functioning implementations; no silent fallbacks or emergency bypasses; no orphan, duplicate, or
+  dead endpoints. If a piece cannot be built for real yet, do not fake it: state the missing
+  upstream dependency plainly (see "What is genuinely NOT done yet" above) and stop there.
+- Configuration is environment-driven: values come from `.env` / `config/`, never hardcoded in code.
+- Refactoring uses the charter's Chain-of-Thought and Tree-of-Thought discipline (root-cause first,
+  then evaluate solutions on reliability, efficiency, completeness, scalability, compliance).
+- A task is done only when `cd <program> && make check` is green (ruff + mypy --strict + pytest,
+  clinical golden tests included) and the phase acceptance criterion is met. The compliance-enforcer
+  and honest-broker subagents gate against this charter; do not claim completion around them.
+
+**Reconcile with reality (this is not a loophole):** the empty `src/` stubs are the intended
+phased-build starting point, and the numeric clinical/config values are deliberately ILLUSTRATIVE
+pending clinician review. Implement real logic when building a phase; do not "fix" the scaffold to
+look finished, and do not invent clinical numbers to satisfy the rule. Building the real thing is
+compliance; faking completeness is the violation the charter exists to prevent.
 
 ## Style
 American spellings, no em-dashes in code comments and docs. No secrets committed; only *.env.example.

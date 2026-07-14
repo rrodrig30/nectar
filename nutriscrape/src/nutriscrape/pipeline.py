@@ -160,6 +160,26 @@ def _persist_rule(client: GraphClient, rule: DietaryRule) -> None:
         link_evidenced_by(client, rule_id=rule.rule_id, guideline_id=rule.guideline_id)
 
 
+def _conditions_dir() -> Path | None:
+    """Locate the disease-rule condition YAMLs (`ckd.yaml`, `htn.yaml`, ...). These are authored in
+    `nectar/config/conditions` (the clinical KB the root map assigns to NECTAR); NutriScrape is the
+    writer that persists them to the graph as `:Condition-[:IMPOSES]->:DietaryRule` so NECTAR reads
+    them back via `constraints_for_condition`. Resolution order: the `NUTRISCRAPE_CONDITIONS` env
+    var; then `conditions/` staged next to the nutriscrape config (the container image copies the
+    shared condition rules there); then the monorepo sibling `nectar/config/conditions`. Returns
+    None when none is found, so `run_knowledge` logs it and continues rather than failing the run."""
+    override = os.environ.get("NUTRISCRAPE_CONDITIONS")
+    if override:
+        return Path(override)
+    staged = default_config_dir() / "conditions"
+    if staged.is_dir():
+        return staged
+    sibling = Path(__file__).resolve().parents[3] / "nectar" / "config" / "conditions"
+    if sibling.is_dir():
+        return sibling
+    return None
+
+
 def run_knowledge() -> None:
     """Load rules/interactions/transforms/guidelines from config/ into the typed models that
     mirror the contract's clinical knowledge base (DATA_CONTRACT.md Sections 2.2, 3.3, 3.4), and
@@ -175,9 +195,14 @@ def run_knowledge() -> None:
     re-running this stage after those nodes exist completes the link (idempotent per SDD Section 9).
     """
     config_dir = default_config_dir()
-    logger.info("knowledge: loading rules/interactions/transforms/guidelines from %s", config_dir)
+    conditions_dir = _conditions_dir()
+    logger.info(
+        "knowledge: loading interactions/transforms/guidelines from %s; condition rules from %s",
+        config_dir,
+        conditions_dir if conditions_dir is not None else "(no conditions dir found)",
+    )
 
-    rules = load_rules(config_dir)
+    rules = load_rules(conditions_dir) if conditions_dir is not None else []
     interactions = load_interactions(config_dir)
     transforms = load_transforms(config_dir)
     guidelines = load_guidelines(config_dir)
@@ -192,6 +217,13 @@ def run_knowledge() -> None:
     )
 
     with GraphClient.from_env() as client:
+        # Merge the canonical nutrient vocabulary first. A rule's ACTS_ON edge matches (never
+        # creates) its target :Nutrient, so without this a `knowledge` run before `fdc-import` /
+        # `ingest` (the order run-all uses) would silently drop every rule->nutrient link. Merging
+        # the small config vocabulary here makes ACTS_ON complete in a single pass, regardless of
+        # stage order, and is idempotent with the same merge in `fdc-import` / `ingest`.
+        for nutrient_id, (name, unit) in _load_nutrient_vocab().items():
+            merge_nutrient(client, nutrient_id=nutrient_id, name=name, unit=unit)
         for guideline in guidelines:
             merge_guideline(client, guideline=guideline)
         for rule in rules:

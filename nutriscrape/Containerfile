@@ -13,6 +13,10 @@ COPY contract/schema ./contract/schema
 COPY nutriscrape/pyproject.toml ./
 COPY nutriscrape/src ./src
 COPY nutriscrape/config ./config
+# The disease-rule condition YAMLs are authored under nectar/config/conditions (root map), but
+# NutriScrape is the writer that persists them to the graph. Stage them at /app/config/conditions so
+# `run_knowledge` finds them via the config/conditions branch and loads the clinical rule KB.
+COPY nectar/config/conditions ./config/conditions
 RUN pip install --upgrade pip && pip install .
 
 FROM docker.io/library/python:3.11-slim
