@@ -6,17 +6,18 @@ cooked nutrients, graph/writers.py for Cypher). See ../../docs/PDD.md Section 10
 ../../CLAUDE.md invariants.
 
 All five stages are functional today given a configured Neo4j: `run_schema`, `run_knowledge`,
-`run_ingest`, `run_cluster`, and `run_materialize` (over the bundled sample corpus). The only
-remaining gap is full-corpus acquisition (Phase 1):
+`run_ingest`, `run_cluster`, and `run_materialize` (over the bundled sample corpus). What remains is
+data scale, not code: pointing acquisition at the full RecipeNLG export or a large URL list.
 
-- `run_ingest` is wired end to end for the bundled sample corpus (config/samples/recipes_sample.csv,
-  overridable via NUTRISCRAPE_CORPUS): acquisition (`acquisition/adapters/datasets.py`) ->
-  deterministic model-free parse (`acquisition/parse.py`) -> FDC resolution -> the FDC-number ->
-  contract `nutrient_id` mapping (`resolution/nutrient_map.py`) -> the four-channel transform
-  (`nutrition/compose.py`) -> cooked per-serving HAS_NUTRIENT vectors on the as-authored variant.
-  Food resolution and raw amounts use the live USDA FDC API (needs FDC_API_KEY). TODO(PDD Phase 1):
-  the full RecipeNLG bulk download and schema.org scraping (`acquisition/adapters/structured.py`,
-  still a stub) remain, to move past the bundled sample to the full corpus.
+- `run_ingest` is wired end to end: acquisition (`_acquire` selects `acquisition/adapters/
+  datasets.py` for a `.csv` dataset dump or `acquisition/adapters/structured.py` for a `.txt`/`.urls`
+  list of schema.org recipe URLs) -> deterministic model-free parse (`acquisition/parse.py`) -> FDC
+  resolution -> the FDC-number -> contract `nutrient_id` mapping (`resolution/nutrient_map.py`) ->
+  the four-channel transform (`nutrition/compose.py`) -> cooked per-serving HAS_NUTRIENT vectors on
+  the as-authored variant. It runs over the bundled sample by default (NUTRISCRAPE_CORPUS overrides).
+  Food resolution and raw amounts use the live USDA FDC API (needs FDC_API_KEY); schema.org scraping
+  needs recipe-scrapers and network. The only remaining data gap is obtaining the full RecipeNLG
+  export (a multi-GB download, not code).
 - `run_cluster` is wired: `graph/readers.py` reads already-ingested recipes back into clustering
   `RecipeInput`s (resolved FDC foods, masses, primary method, title), which fingerprint -> block ->
   score -> resolve, and `_cluster_and_persist` writes :Dish nodes and HAS_VERSION links. After
@@ -31,8 +32,8 @@ remaining gap is full-corpus acquisition (Phase 1):
   materializes per-dish nutrient distribution statistics on each `:Dish` across its versions
   (contract Section 5) via `graph/readers.read_dish_variant_nutrients` and
   `graph/writers.write_dish_nutrient_stats`.
-- TODO(PDD Phase 1): the full RecipeNLG bulk download and schema.org scraping
-  (`acquisition/adapters/structured.py`, still a stub) remain, to move past the bundled sample.
+- The only genuinely-remaining item is data scale: obtaining the full RecipeNLG export or a large
+  curated URL list to run acquisition over, rather than the bundled 7-recipe sample.
 
 None of these are stubbed with fake data. Each function below either does the real, complete work
 it can do today, or returns after logging why there is nothing to do, per its docstring.
@@ -43,6 +44,7 @@ import logging
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from nectar_contract import names
@@ -51,6 +53,7 @@ from nutriscrape.clustering.fingerprint import RecipeInput, fingerprint as make_
 from nutriscrape.clustering.resolve import Judge, cluster as cluster_fingerprints
 from nutriscrape.acquisition.adapters.base import RawRecipe
 from nutriscrape.acquisition.adapters.datasets import RecipeNlgAdapter
+from nutriscrape.acquisition.adapters.structured import SchemaOrgAdapter
 from nutriscrape.acquisition.parse import basic_preparation, parse_ingredient_basic
 from nutriscrape.common import confidence
 from nutriscrape.common.config import default_config_dir, load_config
@@ -237,6 +240,23 @@ def _sample_corpus_path() -> str:
     return os.environ.get("NUTRISCRAPE_CORPUS") or str(
         default_config_dir() / "samples" / "recipes_sample.csv"
     )
+
+
+def _acquire(corpus_path: str) -> list[RawRecipe]:
+    """Acquire raw recipes from the corpus path, choosing the adapter by extension: a `.csv` is a
+    RecipeNLG-style dataset dump (`RecipeNlgAdapter`); a `.txt`/`.urls` file is a newline list of
+    recipe URLs scraped from their published schema.org data (`SchemaOrgAdapter`, needs
+    recipe-scrapers and network). Lines starting with `#` in a URL file are treated as comments."""
+    if corpus_path.endswith((".txt", ".urls")):
+        lines = Path(corpus_path).read_text(encoding="utf-8").splitlines()
+        urls = [
+            stripped
+            for line in lines
+            for stripped in (line.strip(),)
+            if stripped and not stripped.startswith("#")
+        ]
+        return list(SchemaOrgAdapter(urls).recipes())
+    return list(RecipeNlgAdapter(corpus_path).recipes())
 
 
 def _load_nutrient_vocab() -> dict[str, tuple[str, str]]:
@@ -437,15 +457,16 @@ def _real_food_fetcher(fdc_client: FdcClient) -> Callable[[str], dict[str, Any]]
 
 def run_ingest() -> None:
     """Acquisition -> extraction -> resolution -> four-channel cooked nutrition over the recipe
-    corpus. Runs over the bundled sample corpus (config/samples/recipes_sample.csv, overridable via
-    NUTRISCRAPE_CORPUS) with the deterministic parsers, so it works offline without a running LLM.
-    Food resolution and raw nutrient amounts come from the live USDA FDC API and require FDC_API_KEY;
-    without it, this logs how to obtain one and returns. Downloading the full RecipeNLG corpus and
-    schema.org scraping (acquisition/adapters/structured.py) remain PDD Phase 1 work.
+    corpus. `_acquire` selects the adapter by the corpus path extension: a `.csv` RecipeNLG dataset
+    dump, or a `.txt`/`.urls` list of schema.org recipe URLs. Runs over the bundled sample CSV by
+    default (NUTRISCRAPE_CORPUS overrides) with the deterministic parsers, so it works offline
+    without a running LLM. Food resolution and raw nutrient amounts come from the live USDA FDC API
+    and require FDC_API_KEY; without it, this logs how to obtain one and returns. Schema.org scraping
+    additionally needs recipe-scrapers and network.
     """
     corpus = _sample_corpus_path()
     logger.info("ingest: reading recipe corpus from %s", corpus)
-    raw_recipes = list(RecipeNlgAdapter(corpus).recipes())
+    raw_recipes = _acquire(corpus)
     if not raw_recipes:
         logger.warning("ingest: no recipes found in %s; nothing to ingest", corpus)
         return
