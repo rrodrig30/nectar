@@ -1,5 +1,7 @@
 # NECTAR Platform
 
+[![CI](https://github.com/rrodrig30/nectar/actions/workflows/ci.yml/badge.svg)](https://github.com/rrodrig30/nectar/actions/workflows/ci.yml)
+
 Nutritional Evidence and Clinical Targeting of Appropriate Recipes. A knowledge-graph and
 retrieval-augmented platform that builds a nutrition database from recipes and food-composition
 data, and recommends dishes appropriate to a patient's conditions, medications, and goals.
