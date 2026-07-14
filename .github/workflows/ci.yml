@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: make check (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [nutriscrape, nectar]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install toolchain and packages
+        run: |
+          python -m pip install --upgrade pip
+          # ruff/mypy/pytest plus the light runtime deps `make check` needs. Heavy optional deps
+          # (sentence-transformers/torch, prefect, the LLM SDKs) are lazy-imported and covered by
+          # mypy's ignore_missing_imports overrides, so make check does not require installing them.
+          pip install ruff mypy pytest pydantic pyyaml neo4j fastapi uvicorn httpx requests
+          pip install -e ./contract --no-deps
+          pip install -e ./nutriscrape --no-deps
+          pip install -e ./nectar --no-deps
+      - name: make check
+        run: make -C ${{ matrix.package }} check
+
+  integration:
+    name: make test-int (real Neo4j via testcontainers)
+    runs-on: ubuntu-latest
+    env:
+      # The runner is ephemeral, so skip testcontainers' Ryuk reaper to avoid its socket-mount quirks.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install toolchain, packages, and testcontainers
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy pytest 'testcontainers[neo4j]' \
+            pydantic pyyaml neo4j fastapi uvicorn httpx requests
+          pip install -e ./contract --no-deps
+          pip install -e ./nutriscrape --no-deps
+          pip install -e ./nectar --no-deps
+      - name: make test-int (nutriscrape - spins up a real Neo4j)
+        run: make -C nutriscrape test-int
+      - name: make test-int (nectar - hermetic FastAPI)
+        run: make -C nectar test-int
