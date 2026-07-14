@@ -13,12 +13,14 @@ dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
   "pyyaml>=6",
-  "sentence-transformers>=2.2",
   "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
 dev = ["ruff", "mypy", "pytest", "testcontainers[neo4j]"]
+# Embedding computation (guideline vectors). Optional: the read path takes precomputed embeddings,
+# and it pulls torch. Install with: pip install .[embeddings]
+embeddings = ["sentence-transformers>=2.2"]
 
 [tool.ruff]
 line-length = 100

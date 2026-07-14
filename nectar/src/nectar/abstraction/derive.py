@@ -13,12 +13,13 @@ from typing import Any, Literal
 import yaml
 
 from nectar.abstraction.thresholds import LabThresholds, load_lab_thresholds
+from nectar.common.config import nectar_config_dir
 
 Direction = Literal["avoid", "limit", "target", "maintain", "prefer"]
 
 
 def _config_dir() -> Path:
-    return Path(__file__).resolve().parents[3] / "config"
+    return nectar_config_dir()
 
 
 def _load_equations(path: str | Path | None = None) -> dict[str, Any]:

@@ -13,12 +13,14 @@ dependencies = [
   "recipe-scrapers>=15",
   "requests>=2.31",
   "pyyaml>=6",
-  "sentence-transformers>=2.2",
   "prefect>=2",
 ]
 
 [project.optional-dependencies]
 dev = ["ruff", "mypy", "pytest", "testcontainers[neo4j]"]
+# Embedding computation (guideline/title vectors). Optional: no batch stage imports it today, and
+# it pulls torch, so the batch image stays lean without it. Install with: pip install .[embeddings]
+embeddings = ["sentence-transformers>=2.2"]
 
 [tool.ruff]
 line-length = 100

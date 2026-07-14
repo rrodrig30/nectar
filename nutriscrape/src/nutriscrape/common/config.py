@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 _ENV_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)(?::-([^}]*))?\}")
+_CONFIG_ENV_VAR = "NUTRISCRAPE_CONFIG"
 
 
 def _expand(value: Any) -> Any:
@@ -27,8 +28,17 @@ def _expand(value: Any) -> Any:
 
 
 def default_config_dir() -> Path:
-    """The nutriscrape/config directory, resolved relative to this file (cwd-independent)."""
-    return Path(__file__).resolve().parents[3] / "config"
+    """The nutriscrape/config directory. Resolution order: the `NUTRISCRAPE_CONFIG` env var if set;
+    then the `config/` sibling of the source tree (editable / monorepo layout); then `config/` under
+    the working directory (installed-package / container layout, where config is staged next to the
+    app). This keeps config discoverable whether run from a checkout or an installed wheel."""
+    override = os.environ.get(_CONFIG_ENV_VAR)
+    if override:
+        return Path(override)
+    relative = Path(__file__).resolve().parents[3] / "config"
+    if relative.is_dir():
+        return relative
+    return Path.cwd() / "config"
 
 
 def load_yaml(path: str | Path) -> dict[str, Any]:

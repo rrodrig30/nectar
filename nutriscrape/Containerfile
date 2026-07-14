@@ -7,6 +7,9 @@ WORKDIR /app
 # because the package is a src-layout project ([tool.setuptools.packages.find] where=["src"]), so the
 # sources must be present for the build to discover the `nutriscrape` package.
 COPY contract/nectar_contract ./nectar_contract
+# The contract DDL is a data file (not part of the wheel); stage it at /app/contract/schema so
+# graph/schema.find_schema_path finds it via the working-directory fallback at runtime.
+COPY contract/schema ./contract/schema
 COPY nutriscrape/pyproject.toml ./
 COPY nutriscrape/src ./src
 COPY nutriscrape/config ./config

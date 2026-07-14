@@ -16,8 +16,21 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel
 
-# nectar/config/settings.yaml, resolved relative to this file so it does not depend on cwd.
-_DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parents[3] / "config" / "settings.yaml"
+_CONFIG_ENV_VAR = "NECTAR_CONFIG"
+
+
+def nectar_config_dir() -> Path:
+    """The nectar/config directory. Resolution order: the `NECTAR_CONFIG` env var if set; the
+    `config/` sibling of the source tree (editable / monorepo layout); then `config/` under the
+    working directory (installed-package / container layout, where config is staged next to the app).
+    Keeps config discoverable whether run from a checkout or an installed wheel."""
+    override = os.environ.get(_CONFIG_ENV_VAR)
+    if override:
+        return Path(override)
+    relative = Path(__file__).resolve().parents[3] / "config"
+    if relative.is_dir():
+        return relative
+    return Path.cwd() / "config"
 
 # ${VAR} or ${VAR:-default}; default may be empty (${VAR:-}).
 _ENV_REF = re.compile(r"\$\{(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?::-(?P<default>[^}]*))?\}")
@@ -85,7 +98,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
 
     :param path: override the default `config/settings.yaml` location (used by tests).
     """
-    settings_path = Path(path) if path is not None else _DEFAULT_SETTINGS_PATH
+    settings_path = Path(path) if path is not None else nectar_config_dir() / "settings.yaml"
     raw = yaml.safe_load(settings_path.read_text())
     if not isinstance(raw, dict):
         raise ValueError(f"settings file {settings_path} did not parse to a mapping")

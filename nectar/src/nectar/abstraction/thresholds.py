@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from nectar.common.config import nectar_config_dir
+
 
 @dataclass(frozen=True)
 class LabThresholds:
@@ -19,7 +21,7 @@ class LabThresholds:
 
 
 def _equations_path() -> Path:
-    return Path(__file__).resolve().parents[3] / "config" / "equations.yaml"
+    return nectar_config_dir() / "equations.yaml"
 
 
 def load_lab_thresholds(path: str | Path | None = None) -> LabThresholds:
