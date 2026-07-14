@@ -36,3 +36,11 @@ cd deploy/compose && podman-compose up -d neo4j ollama       # infra
 ```
 
 Production deployment: `deploy/README.md`.
+
+## Authorship and license
+
+Author: Ronald Rodriguez, MD, PhD · UT Health San Antonio.
+
+Copyright 2026 UT Health San Antonio. Licensed under the Apache License, Version 2.0 (see `LICENSE`
+and `NOTICE`). The code license covers code only; third-party data-source terms are in
+`LICENSE-NOTES.md`.

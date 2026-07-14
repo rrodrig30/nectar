@@ -2,6 +2,10 @@
 name = "nectar-contract"
 version = "1.0.0"
 description = "Shared data contract for the NECTAR platform (schema names, shared types)"
+authors = [
+  {name = "Ronald Rodriguez, MD, PhD"},
+  {name = "UT Health San Antonio"},
+]
 requires-python = ">=3.11"
 dependencies = ["pydantic>=2"]
 

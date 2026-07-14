@@ -2,6 +2,10 @@
 name = "nutriscrape"
 version = "0.1.0"
 description = "NECTAR platform data engine"
+authors = [
+  {name = "Ronald Rodriguez, MD, PhD"},
+  {name = "UT Health San Antonio"},
+]
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2",
