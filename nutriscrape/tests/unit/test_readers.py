@@ -101,9 +101,22 @@ def test_search_foods_sanitizes_query_and_builds_candidates():
     candidates = search_foods(client, "potatoes, peeled & cubed", limit=10)
     # Lucene metacharacters are stripped so the query cannot break the full-text call
     assert "," not in client.params["query"] and "&" not in client.params["query"]
-    assert "potatoes" in client.params["query"] and client.params["limit"] == 10
+    assert '"potatoes"' in client.params["query"] and client.params["limit"] == 10
     assert candidates[0].fdc_id == 170026            # graph stores fdc_id as a string; coerced to int
     assert candidates[0].description == "Potatoes, flesh and skin, raw"
+
+
+def test_search_foods_neutralizes_lucene_operator_words():
+    """A real RecipeNLG ingredient like "butter or margarine" carries the bare word OR, which is a
+    Lucene operator. Every term must be quoted so the full-text query cannot raise a ParseException
+    (the failure that killed the first full-corpus run)."""
+    client = _CapturingReadClient([])
+    search_foods(client, "butter or margarine")
+    query = client.params["query"]
+    assert query == '"butter" "or" "margarine"'      # each term quoted, no bare operator
+    # bare reserved words never reach Lucene as operators
+    for token in query.split():
+        assert token.startswith('"') and token.endswith('"')
 
 
 def test_read_raw_vector_skips_null_rows():

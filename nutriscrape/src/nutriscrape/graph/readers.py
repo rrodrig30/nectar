@@ -168,6 +168,19 @@ def read_dish_variant_nutrients(client: GraphClient) -> dict[str, dict[str, list
 _FOOD_FULLTEXT_INDEX = "food_fulltext"
 _LUCENE_STRIP = re.compile(r"[^A-Za-z0-9 ]+")
 
+
+def _lucene_query(raw: str) -> str:
+    """Build a Lucene query from a free-text food string that cannot break the query parser.
+
+    Stripping metacharacters is not enough: bare reserved *words* (`AND`, `OR`, `NOT`, `TO`) are
+    Lucene operators, so a real ingredient like "butter or margarine" raises a ParseException. We
+    strip to alphanumerics and spaces, then wrap each remaining term in double quotes, so every
+    token is parsed as a term and none can be read as an operator or syntax. Space-joined quoted
+    terms match on any term (the parser's default OR), which is what candidate generation wants.
+    """
+    terms = _LUCENE_STRIP.sub(" ", raw).split()
+    return " ".join(f'"{term}"' for term in terms)
+
 _SEARCH_FOODS = """
 CALL db.index.fulltext.queryNodes($index, $query, {limit: $limit})
 YIELD node, score
@@ -185,8 +198,9 @@ _HAS_FOODS = f"MATCH (f:{names.FOOD}) RETURN f LIMIT 1"
 
 def search_foods(client: GraphClient, query: str, limit: int = 25) -> list[FdcCandidate]:
     """Full-text search of the local :Food graph for `query`, as `FdcCandidate`s the matcher ranks.
-    The query is stripped to alphanumerics and spaces so no Lucene metacharacter can break it."""
-    sanitized = _LUCENE_STRIP.sub(" ", query).strip()
+    `query` is a free-text food string; `_lucene_query` makes it parser-safe (quotes each term so a
+    reserved word like OR/AND/NOT cannot break the Lucene query)."""
+    sanitized = _lucene_query(query)
     if not sanitized:
         return []
     rows = client.run(_SEARCH_FOODS, index=_FOOD_FULLTEXT_INDEX, query=sanitized, limit=limit)
