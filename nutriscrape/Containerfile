@@ -3,12 +3,14 @@
 FROM docker.io/library/python:3.11-slim AS build
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
-# shared contract package first, then the program
+# shared contract package first, then the program. src and config are copied before `pip install .`
+# because the package is a src-layout project ([tool.setuptools.packages.find] where=["src"]), so the
+# sources must be present for the build to discover the `nutriscrape` package.
 COPY contract/nectar_contract ./nectar_contract
 COPY nutriscrape/pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
 COPY nutriscrape/src ./src
 COPY nutriscrape/config ./config
+RUN pip install --upgrade pip && pip install .
 
 FROM docker.io/library/python:3.11-slim
 ENV PYTHONUNBUFFERED=1

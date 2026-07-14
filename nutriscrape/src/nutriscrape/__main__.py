@@ -1,5 +1,8 @@
 """CLI dispatch for batch stages. Usage: python -m nutriscrape <stage>
-stages: schema | knowledge | fdc-import | ingest | cluster | materialize | run-all
+stages: schema | knowledge | fdc-import | ingest | cluster | materialize | run-all | flow
+
+`run-all` runs the stages sequentially in one process. `flow` runs the same work as a Prefect DAG
+with the ingest step fanned out over parallel batches (needs the optional prefect dependency).
 """
 from __future__ import annotations
 
@@ -8,7 +11,9 @@ import sys
 
 from nutriscrape import pipeline
 
-STAGES = ("schema", "knowledge", "fdc-import", "ingest", "cluster", "materialize", "run-all")
+STAGES = (
+    "schema", "knowledge", "fdc-import", "ingest", "cluster", "materialize", "run-all", "flow",
+)
 
 # Stage name -> the pipeline function that implements it. `run-all` is not a key here; it is the
 # ordered sequence of the other stages, defined in _RUN_ALL_ORDER (docs/PDD.md Section 10).
@@ -41,6 +46,13 @@ def _run_stage(stage: str) -> None:
     func()
 
 
+def _run_flow() -> None:
+    """Run the Prefect orchestration flow. Imported lazily so the other stages never need prefect."""
+    from nutriscrape.orchestration.flows import nutriscrape_flow
+
+    nutriscrape_flow()
+
+
 def main(argv: list[str]) -> int:
     stage = argv[1] if len(argv) > 1 else "run-all"
     if stage not in STAGES:
@@ -53,6 +65,8 @@ def main(argv: list[str]) -> int:
         if stage == "run-all":
             for name in _RUN_ALL_ORDER:
                 _run_stage(name)
+        elif stage == "flow":
+            _run_flow()
         else:
             _run_stage(stage)
     except Exception:

@@ -71,6 +71,14 @@ def test_default_argv_dispatches_run_all(recorder: list[str]) -> None:
     assert recorder == _RUN_ALL_EXPECTED
 
 
+def test_flow_stage_dispatches_to_the_flow_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    # the flow runner lazy-imports prefect; monkeypatch it so this stays a prefect-free unit test
+    called: list[str] = []
+    monkeypatch.setattr(cli, "_run_flow", lambda: called.append("flow"))
+    assert cli.main(["prog", "flow"]) == 0
+    assert called == ["flow"]
+
+
 def test_stage_failure_is_caught_and_returns_exit_code_1(monkeypatch: pytest.MonkeyPatch) -> None:
     def _boom() -> None:
         raise RuntimeError("simulated failure")

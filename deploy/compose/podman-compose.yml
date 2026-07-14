@@ -42,10 +42,18 @@ services:
       - NEO4J_PASSWORD=devpassword
       - LLM_BACKEND=ollama
       - LLM_BASE_URL=http://ollama:11434
-    volumes: ["corpus-staging:/data"]
+      # Empty by default so the bundled sample corpus / API-less path is used out of the box;
+      # set these on the host to point at a real corpus and the FDC bulk export.
+      - NUTRISCRAPE_CORPUS=${NUTRISCRAPE_CORPUS:-}
+      - FDC_BULK_DIR=${FDC_BULK_DIR:-}
+      - FDC_API_KEY=${FDC_API_KEY:-}
+      - NUTRISCRAPE_MAX_PARALLEL=${NUTRISCRAPE_MAX_PARALLEL:-4}
+    # run a stage with e.g.: podman compose run --rm nutriscrape flow
+    volumes: ["corpus-staging:/data", "fdc-staging:/fdc"]
     depends_on: [neo4j]
 
 volumes:
   neo4j-data:
   ollama-models:
   corpus-staging:
+  fdc-staging:

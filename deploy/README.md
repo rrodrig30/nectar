@@ -66,14 +66,36 @@ podman exec ollama ollama pull llama3.1:8b
 podman exec ollama ollama pull llama3.2:3b
 ```
 
-Run the batch pipeline when you want it (it exits on completion):
+### Stage the input data (one time)
+
+Set the batch inputs in `~/.config/nectar/platform.env` (`NUTRISCRAPE_CORPUS`, `FDC_BULK_DIR`,
+`NUTRISCRAPE_MAX_PARALLEL`), then drop the data into the named volumes those paths point at:
+
 ```bash
-systemctl --user start nutriscrape                 # full run-all
+# recipe corpus (RecipeNLG CSV, or a .txt/.urls list of schema.org URLs) -> corpus-staging (/data)
+podman volume import corpus-staging recipes_full.csv     # or copy into the volume mount
+# USDA FDC CSV bulk export (food.csv, nutrient.csv, food_nutrient.csv) -> fdc-staging (/fdc)
+#   download + extract from https://fdc.nal.usda.gov/download-datasets
+```
+
+With `FDC_BULK_DIR` staged, `fdc-import` loads food composition into the graph and ingest resolves
+foods locally, so no `FDC_API_KEY` is needed. Without it, set `fdc_api_key` as a podman secret
+(see `platform.env.example`) and ingest falls back to the FDC API.
+
+### Run the batch pipeline (it exits on completion)
+
+```bash
+# parallel Prefect DAG: schema -> knowledge -> fdc-import -> parallel ingest -> cluster -> materialize
+systemctl --user start nutriscrape-flow
+
+# or the sequential single-process path:
+systemctl --user start nutriscrape                 # run-all
+
 # or a single stage:
 podman run --rm --network nectar --env-file ~/.config/nectar/platform.env \
   -e NEO4J_URI=bolt://neo4j:7687 -e NEO4J_USER=nutriscrape_writer \
   --secret nutriscrape_pass,type=env,target=NEO4J_PASSWORD \
-  -v corpus-staging:/data:Z localhost/nutriscrape:latest ingest
+  -v corpus-staging:/data:Z -v fdc-staging:/fdc:Z localhost/nutriscrape:latest fdc-import
 ```
 
 ## Turning on Anthropic or OpenAI later

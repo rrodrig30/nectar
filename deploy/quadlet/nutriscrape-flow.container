@@ -1,10 +1,10 @@
 [Unit]
-Description=NutriScrape batch pipeline (run to completion)
+Description=NutriScrape batch pipeline as a parallel Prefect flow (run to completion)
 After=neo4j.service
 Requires=neo4j.service
 
 [Container]
-ContainerName=nutriscrape
+ContainerName=nutriscrape-flow
 Image=localhost/nutriscrape:latest
 Network=nectar.network
 EnvironmentFile=%h/.config/nectar/platform.env
@@ -12,15 +12,12 @@ Environment=NEO4J_URI=bolt://neo4j:7687
 Environment=NEO4J_USER=nutriscrape_writer
 Secret=nutriscrape_pass,type=env,target=NEO4J_PASSWORD
 Volume=corpus-staging:/data:Z
-# FDC CSV bulk export (food.csv, nutrient.csv, food_nutrient.csv). Referenced by FDC_BULK_DIR=/fdc
-# in platform.env; drop the extracted export into this volume before running fdc-import.
 Volume=fdc-staging:/fdc:Z
 # FDC_API_KEY is only the API fallback (unneeded once the bulk export is imported); uncomment to use:
 # Secret=fdc_api_key,type=env,target=FDC_API_KEY
-# Sequential single-process run of all stages. Override per run, e.g.
-#   podman run ... localhost/nutriscrape:latest ingest
-# For the parallel Prefect DAG, use the nutriscrape-flow unit instead.
-Exec=run-all
+# Runs schema -> knowledge -> fdc-import -> (parallel ingest, NUTRISCRAPE_MAX_PARALLEL batches) ->
+# cluster -> materialize as one Prefect DAG. Same image and env as the sequential nutriscrape unit.
+Exec=flow
 
 [Service]
 Type=oneshot
