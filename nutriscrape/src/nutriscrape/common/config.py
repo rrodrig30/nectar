@@ -41,6 +41,55 @@ def default_config_dir() -> Path:
     return Path.cwd() / "config"
 
 
+_ENV_FILE_VAR = "NUTRISCRAPE_ENV_FILE"
+
+
+def load_env_file(path: str | Path | None = None) -> Path | None:
+    """Load a `.env` file (`KEY=value` lines) into `os.environ` for local runs, with no dependency.
+
+    Resolution order: the `path` argument; then `NUTRISCRAPE_ENV_FILE`; then the first `.env` found
+    walking up from the working directory to the filesystem root (the monorepo root holds it). An
+    already-set environment variable always wins (we never overwrite), so a value exported in the
+    shell or injected by a container `--env-file` is never clobbered by the file. Returns the loaded
+    path, or None when no file is found, so this is a safe no-op in container deployments that inject
+    the environment directly. Supports an optional `export ` prefix, `#` comments, and single- or
+    double-quoted values. It is the entry points' job to call this before reading the environment.
+    """
+    candidate = _resolve_env_file(path)
+    if candidate is None or not candidate.is_file():
+        return None
+    for raw_line in candidate.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+    return candidate
+
+
+def _resolve_env_file(path: str | Path | None) -> Path | None:
+    if path is not None:
+        return Path(path)
+    override = os.environ.get(_ENV_FILE_VAR)
+    if override:
+        return Path(override)
+    cwd = Path.cwd()
+    for directory in (cwd, *cwd.parents):
+        candidate = directory / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def load_yaml(path: str | Path) -> dict[str, Any]:
     """Load one YAML document with env expansion applied. Returns an empty dict for an empty file."""
     with open(path, encoding="utf-8") as f:

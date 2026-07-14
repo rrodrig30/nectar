@@ -10,6 +10,7 @@ import logging
 import sys
 
 from nutriscrape import pipeline
+from nutriscrape.common.config import load_env_file
 
 STAGES = (
     "schema", "knowledge", "fdc-import", "ingest", "cluster", "materialize", "run-all", "flow",
@@ -60,6 +61,9 @@ def main(argv: list[str]) -> int:
         return 2
 
     logging.basicConfig(level=logging.INFO)
+    env_file = load_env_file()  # local .env; a no-op when env is injected (containers)
+    if env_file is not None:
+        logger.info("loaded environment from %s", env_file)
 
     try:
         if stage == "run-all":

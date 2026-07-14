@@ -119,4 +119,8 @@ def nutriscrape_flow(max_parallel: int | None = None) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    # Load a local .env (make flow runs this module directly); no-op when env is injected.
+    from nutriscrape.common.config import load_env_file
+
+    load_env_file()
     nutriscrape_flow()
