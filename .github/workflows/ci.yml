@@ -47,7 +47,8 @@ jobs:
       - name: Install toolchain, packages, and testcontainers
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy pytest 'testcontainers[neo4j]' \
+          # testcontainers for the real-Neo4j round trip; prefect for the orchestration flow test.
+          pip install ruff mypy pytest 'testcontainers[neo4j]' prefect \
             pydantic pyyaml neo4j fastapi uvicorn httpx requests
           pip install -e ./contract --no-deps
           pip install -e ./nutriscrape --no-deps

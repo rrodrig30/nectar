@@ -41,6 +41,7 @@ it can do today, or returns after logging why there is nothing to do, per its do
 from __future__ import annotations
 
 import logging
+import math
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -595,6 +596,44 @@ def run_ingest() -> None:
         for raw in raw_recipes:
             _ingest_recipe(raw, deps, client)
     logger.info("ingest: processed %d recipe(s) from %s", len(raw_recipes), corpus)
+
+
+# ------------------------------------------------------- parallel ingest building blocks (orchestration)
+# These let an orchestrator (orchestration/flows.py, Prefect) fan ingest out over batches of recipes
+# in parallel. `run_ingest` above is the single-process path (`make ingest`); the pieces here are the
+# same work, split so independent recipes can be ingested concurrently against a shared Neo4j.
+
+
+def acquire_recipes() -> list[RawRecipe]:
+    """Read the configured corpus (NUTRISCRAPE_CORPUS or the bundled sample) into RawRecipes."""
+    return _acquire(_sample_corpus_path())
+
+
+def local_resolution_available() -> bool:
+    """Whether the graph already holds :Food nodes (from fdc-import), so ingest can resolve locally
+    with no FDC API call. Opens a short-lived read connection."""
+    with GraphClient.from_env() as client:
+        return has_foods(client)
+
+
+def split_into_batches(items: Sequence[RawRecipe], batch_count: int) -> list[list[RawRecipe]]:
+    """Split `items` into at most `batch_count` roughly-equal batches (the unit of parallelism)."""
+    count = max(1, batch_count)
+    if not items:
+        return []
+    size = math.ceil(len(items) / count)
+    return [list(items[start:start + size]) for start in range(0, len(items), size)]
+
+
+def ingest_batch(recipes: Sequence[RawRecipe], use_local: bool) -> int:
+    """Ingest one batch of recipes against a freshly-opened GraphClient (one per batch, so parallel
+    batches do not share a session). `use_local` selects local-graph vs FDC-API resolution. The
+    writers' MERGEs are idempotent, so re-running a failed batch is safe. Returns the recipe count."""
+    with GraphClient.from_env() as client:
+        deps = _local_ingest_deps(client) if use_local else _api_ingest_deps(FdcClient())
+        for raw in recipes:
+            _ingest_recipe(raw, deps, client)
+    return len(recipes)
 
 
 # --------------------------------------------------------------------------------------- cluster

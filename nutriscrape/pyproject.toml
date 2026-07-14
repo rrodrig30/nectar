@@ -35,6 +35,12 @@ mypy_path = "../contract"
 module = ["sentence_transformers.*", "prefect.*", "recipe_scrapers.*", "requests.*", "yaml"]
 ignore_missing_imports = true
 
+# Prefect is treated as untyped (ignore_missing_imports above), so its @flow/@task decorators are
+# Any; relax only the untyped-decorator check for the orchestration module that uses them.
+[[tool.mypy.overrides]]
+module = ["nutriscrape.orchestration.*"]
+disallow_untyped_decorators = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
