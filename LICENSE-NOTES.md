@@ -21,4 +21,8 @@ supervised research protocol with appropriate oversight (IRB, dietitian and phys
 Source manifest with links and trust tiers: `nutriscrape/config/sources.yaml`.
 
 ## Code
-Application code in this repository: choose a license (MIT or Apache-2.0 suggested) and add it here.
+Application code in this repository is licensed under the Apache License, Version 2.0; see `LICENSE`
+and `NOTICE`. Apache-2.0's explicit patent grant suits clinical software that may involve patented
+methods. This license covers the code only: the third-party data-source terms above still govern any
+data you ingest or redistribute (for example, RecipeNLG remains non-commercial, and Open Food Facts
+data stays under ODbL share-alike).
