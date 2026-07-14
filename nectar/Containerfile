@@ -3,17 +3,28 @@
 FROM docker.io/library/python:3.11-slim AS build
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
-COPY contract/nectar_contract ./nectar_contract
+# Install the shared contract package into site-packages first, so `import nectar_contract` resolves
+# regardless of the launcher. uvicorn (unlike `python -m`) does not put the working directory on
+# sys.path, so relying on the cwd copy is not safe for the API image.
+COPY contract/pyproject.toml ./contract/pyproject.toml
+COPY contract/nectar_contract ./contract/nectar_contract
+RUN pip install --upgrade pip && pip install ./contract
+# Then the program. src-layout ([tool.setuptools.packages.find] where=["src"]) means the sources
+# must be present before `pip install .` for the `nectar` package to be discovered.
 COPY nectar/pyproject.toml ./
-RUN pip install --upgrade pip && pip install .
 COPY nectar/src ./src
 COPY nectar/config ./config
+RUN pip install .
 
 FROM docker.io/library/python:3.11-slim
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+# config/ is staged next to the app so nectar_config_dir() finds it via the working-directory
+# fallback (WORKDIR is /app, so config resolves to /app/config).
 COPY --from=build /app /app
 EXPOSE 8000
-# same image runs the API or the writeback service, chosen by the command
-CMD ["uvicorn", "nectar.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+# same image runs the API or the writeback service, chosen by the command. Invoked via `python -m`
+# so it does not depend on the uvicorn console script (only site-packages is carried to the final
+# stage, not /usr/local/bin).
+CMD ["python", "-m", "uvicorn", "nectar.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
