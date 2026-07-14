@@ -6,6 +6,7 @@ versions of one dish, which means re-reading what `run_ingest` wrote and rebuild
 `RecipeInput` (resolved FDC foods and masses, a primary method, the title) per recipe.
 """
 from __future__ import annotations
+import re
 from collections import Counter
 from dataclasses import dataclass
 
@@ -14,6 +15,7 @@ from nectar_contract import names
 from nutriscrape.clustering.fingerprint import RecipeInput
 from nutriscrape.graph.client import GraphClient
 from nutriscrape.nutrition.transform import Preparation
+from nutriscrape.resolution.fdc_client import FdcCandidate
 
 # One row per :Recipe, gathering its CONTAINS foods (fdc_id, raw_mass_g, and the per-food method the
 # ingest wrote onto CONTAINS.prep_id). A recipe with no resolved food yields no row (INNER match).
@@ -158,5 +160,64 @@ def read_dish_variant_nutrients(client: GraphClient) -> dict[str, dict[str, list
     return out
 
 
+# ----------------------------------------------------------------------- local food resolution
+# Reads for resolving recipe ingredients against the locally-imported :Food graph (fdc-import),
+# so ingest needs no per-food FDC API call. `food_fulltext` is the full-text index on
+# :Food(description) declared in contract/schema/schema.cypher.
+
+_FOOD_FULLTEXT_INDEX = "food_fulltext"
+_LUCENE_STRIP = re.compile(r"[^A-Za-z0-9 ]+")
+
+_SEARCH_FOODS = """
+CALL db.index.fulltext.queryNodes($index, $query, {limit: $limit})
+YIELD node, score
+RETURN node.fdc_id AS fdc_id, node.description AS description, node.data_type AS data_type,
+       score AS score
+"""
+
+_READ_RAW_VECTOR = f"""
+MATCH (f:{names.FOOD} {{fdc_id: $fdc_id}})-[h:{names.HAS_NUTRIENT_RAW}]->(n:{names.NUTRIENT})
+RETURN n.nutrient_id AS nutrient_id, h.amount_per_100g AS amount
+"""
+
+_HAS_FOODS = f"MATCH (f:{names.FOOD}) RETURN f LIMIT 1"
+
+
+def search_foods(client: GraphClient, query: str, limit: int = 25) -> list[FdcCandidate]:
+    """Full-text search of the local :Food graph for `query`, as `FdcCandidate`s the matcher ranks.
+    The query is stripped to alphanumerics and spaces so no Lucene metacharacter can break it."""
+    sanitized = _LUCENE_STRIP.sub(" ", query).strip()
+    if not sanitized:
+        return []
+    rows = client.run(_SEARCH_FOODS, index=_FOOD_FULLTEXT_INDEX, query=sanitized, limit=limit)
+    candidates: list[FdcCandidate] = []
+    for row in rows:
+        if row.get("fdc_id") is None:
+            continue
+        candidates.append(FdcCandidate(
+            fdc_id=int(row["fdc_id"]),
+            description=str(row.get("description") or ""),
+            data_type=str(row.get("data_type") or ""),
+            score=float(row.get("score") or 0.0),
+        ))
+    return candidates
+
+
+def read_raw_vector(client: GraphClient, fdc_id: str) -> dict[str, float]:
+    """The food's raw per-100g nutrient vector from HAS_NUTRIENT_RAW (bulk-imported)."""
+    rows = client.run(_READ_RAW_VECTOR, fdc_id=fdc_id)
+    return {
+        str(row["nutrient_id"]): float(row["amount"])
+        for row in rows
+        if row.get("nutrient_id") is not None and row.get("amount") is not None
+    }
+
+
+def has_foods(client: GraphClient) -> bool:
+    """Whether the graph holds any :Food node (that is, whether fdc-import has populated it)."""
+    return bool(client.run(_HAS_FOODS))
+
+
 __all__ = ["read_recipe_inputs", "read_recipes_for_materialize", "read_dish_variant_nutrients",
+           "search_foods", "read_raw_vector", "has_foods",
            "MaterializeRecipe", "MaterializeIngredient"]

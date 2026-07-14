@@ -2,9 +2,12 @@
 from typing import Any
 
 from nutriscrape.graph.readers import (
+    has_foods,
     read_dish_variant_nutrients,
+    read_raw_vector,
     read_recipe_inputs,
     read_recipes_for_materialize,
+    search_foods,
 )
 
 
@@ -78,3 +81,38 @@ def test_read_dish_variant_nutrients_groups_by_dish_and_nutrient():
     assert out["dish:pot"]["potassium"] == [378.0, 964.0]
     assert out["dish:pot"]["sodium"] == [491.0, 491.0]
     assert out["dish:rice"]["potassium"] == [55.0]
+
+
+class _CapturingReadClient:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+        self.params: dict[str, Any] = {}
+
+    def run(self, cypher: str, **params: Any) -> list[dict[str, Any]]:
+        self.params = params
+        return self._rows
+
+
+def test_search_foods_sanitizes_query_and_builds_candidates():
+    client = _CapturingReadClient([
+        {"fdc_id": "170026", "description": "Potatoes, flesh and skin, raw",
+         "data_type": "sr_legacy_food", "score": 3.2},
+    ])
+    candidates = search_foods(client, "potatoes, peeled & cubed", limit=10)
+    # Lucene metacharacters are stripped so the query cannot break the full-text call
+    assert "," not in client.params["query"] and "&" not in client.params["query"]
+    assert "potatoes" in client.params["query"] and client.params["limit"] == 10
+    assert candidates[0].fdc_id == 170026            # graph stores fdc_id as a string; coerced to int
+    assert candidates[0].description == "Potatoes, flesh and skin, raw"
+
+
+def test_read_raw_vector_skips_null_rows():
+    rows = [{"nutrient_id": "potassium", "amount": 425.0},
+            {"nutrient_id": "sodium", "amount": 6.0},
+            {"nutrient_id": None, "amount": None}]
+    assert read_raw_vector(_FakeReadClient(rows), "170026") == {"potassium": 425.0, "sodium": 6.0}
+
+
+def test_has_foods():
+    assert has_foods(_FakeReadClient([{"f": 1}])) is True
+    assert has_foods(_FakeReadClient([])) is False

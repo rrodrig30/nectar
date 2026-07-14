@@ -1,6 +1,8 @@
-.PHONY: schema ingest cluster knowledge materialize check test test-int lint
+.PHONY: schema ingest cluster knowledge materialize fdc-import check test test-int lint
 schema:
 	python -m nutriscrape schema
+fdc-import:
+	python -m nutriscrape fdc-import
 ingest:
 	python -m nutriscrape ingest
 cluster:

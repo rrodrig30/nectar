@@ -1,5 +1,5 @@
 """CLI dispatch for batch stages. Usage: python -m nutriscrape <stage>
-stages: schema | ingest | cluster | knowledge | materialize | run-all
+stages: schema | knowledge | fdc-import | ingest | cluster | materialize | run-all
 """
 from __future__ import annotations
 
@@ -8,19 +8,24 @@ import sys
 
 from nutriscrape import pipeline
 
-STAGES = ("schema", "ingest", "cluster", "knowledge", "materialize", "run-all")
+STAGES = ("schema", "knowledge", "fdc-import", "ingest", "cluster", "materialize", "run-all")
 
 # Stage name -> the pipeline function that implements it. `run-all` is not a key here; it is the
-# ordered sequence of the other five, defined in _RUN_ALL_ORDER (docs/PDD.md Section 10).
+# ordered sequence of the other stages, defined in _RUN_ALL_ORDER (docs/PDD.md Section 10).
 _STAGE_TO_FUNC_NAME: dict[str, str] = {
     "schema": "run_schema",
+    "knowledge": "run_knowledge",
+    "fdc-import": "run_fdc_import",
     "ingest": "run_ingest",
     "cluster": "run_cluster",
-    "knowledge": "run_knowledge",
     "materialize": "run_materialize",
 }
 
-_RUN_ALL_ORDER: tuple[str, ...] = ("schema", "ingest", "cluster", "knowledge", "materialize")
+# fdc-import runs before ingest so ingest can resolve against the local :Food graph rather than the
+# FDC API. It no-ops (logs) when FDC_BULK_DIR is unset, so run-all is safe without a bulk export.
+_RUN_ALL_ORDER: tuple[str, ...] = (
+    "schema", "knowledge", "fdc-import", "ingest", "cluster", "materialize",
+)
 
 logger = logging.getLogger(__name__)
 

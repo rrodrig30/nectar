@@ -10,6 +10,8 @@ Skipped automatically when testcontainers or a Docker runtime is unavailable, so
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("testcontainers.neo4j")
@@ -18,10 +20,14 @@ from neo4j import GraphDatabase  # noqa: E402
 from testcontainers.neo4j import Neo4jContainer  # noqa: E402
 
 from nectar_contract.types import Provenance  # noqa: E402
+from nutriscrape import pipeline  # noqa: E402
+from nutriscrape.acquisition.adapters.base import RawRecipe  # noqa: E402
 from nutriscrape.graph import readers, writers  # noqa: E402
 from nutriscrape.graph.client import GraphClient  # noqa: E402
 from nutriscrape.graph.schema import apply_schema  # noqa: E402
 from nutriscrape.nutrition.distribution import distribution  # noqa: E402
+
+_FDC_FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "fdc"
 
 _IMAGE = "neo4j:5.20"
 _PASSWORD = "testpassword"
@@ -90,3 +96,33 @@ def test_nectar_contract_client_reads_the_written_graph(graph_driver):
     assert "potassium" in stats
     assert stats["potassium"].minimum == 378.0 and stats["potassium"].maximum == 964.0
     assert stats["potassium"].count == 2 and stats["potassium"].unit == "mg"
+
+
+def test_bulk_import_then_local_resolution_and_ingest(graph_driver):
+    """The scale path end to end on real Neo4j: import the FDC CSV bulk fixture into :Food +
+    HAS_NUTRIENT_RAW, then ingest a recipe resolving foods against the local full-text index (no FDC
+    API), and read the cooked potassium back."""
+    client = GraphClient(graph_driver)
+
+    imported = pipeline._import_fdc_bulk(str(_FDC_FIXTURE), client)
+    assert imported == 2
+    client.run("CALL db.awaitIndexes(60)")   # let the food full-text index finish populating
+
+    assert readers.has_foods(client)
+    candidates = readers.search_foods(client, "potatoes")
+    assert any(candidate.description.startswith("Potatoes") for candidate in candidates)
+    assert readers.read_raw_vector(client, "170026")["potassium"] == 425.0
+
+    recipe = RawRecipe(
+        recipe_id="rt_potato", title="Boiled and Drained Potatoes", source_id="test", license="test",
+        servings=4.0, ingredient_lines=("2 pounds potatoes, peeled and cubed",),
+        preparation_steps=("Boil the cubed potatoes for 15 minutes.", "Drain the potatoes well."))
+    pipeline._ingest_recipe(recipe, pipeline._local_ingest_deps(client), client)
+
+    rows = client.run(
+        "MATCH (:Recipe {recipe_id: $recipe_id})-[:HAS_VARIANT]->(:RecipeVariant)"
+        "-[h:HAS_NUTRIENT]->(:Nutrient {nutrient_id: 'potassium'}) "
+        "RETURN h.amount_per_serving AS potassium",
+        recipe_id="rt_potato",
+    )
+    assert rows and rows[0]["potassium"] > 0.0   # cooked from the locally-imported raw vector

@@ -1,0 +1,4 @@
+fdc_id,data_type,description,food_category_id,publication_date
+170026,sr_legacy_food,"Potatoes, flesh and skin, raw",11,2019-04-01
+173468,sr_legacy_food,"Salt, table",2,2019-04-01
+111111,sr_legacy_food,"Unmappable food",99,2019-04-01

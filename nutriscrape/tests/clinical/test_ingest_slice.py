@@ -11,7 +11,14 @@ from typing import Any
 from nutriscrape.acquisition.adapters.base import RawRecipe
 from nutriscrape.common.config import default_config_dir
 from nutriscrape.knowledge.loaders import load_transforms
-from nutriscrape.pipeline import IngestDeps, ResolvedFood, _ingest_recipe, _load_nutrient_vocab
+from nutriscrape.pipeline import (
+    IngestDeps,
+    ResolvedFood,
+    _ingest_recipe,
+    _load_nutrient_vocab,
+    _local_ingest_deps,
+)
+from nutriscrape.resolution.nutrient_map import raw_vector_from_fdc
 
 # Illustrative FDC records (per 100 g), shaped like a real /food/{id} response.
 _POTATO_FDC: dict[str, Any] = {
@@ -53,9 +60,13 @@ class _CaptureClient:
 
 
 def _deps() -> IngestDeps:
-    return IngestDeps(resolve=_fake_resolve, fetch_food=_fake_fetch,
-                      transforms=load_transforms(default_config_dir()),
-                      nutrient_vocab=_load_nutrient_vocab())
+    # raw_vector_for wraps the fake FDC fetch through the real nutrient mapping, matching the API path
+    return IngestDeps(
+        resolve=_fake_resolve,
+        raw_vector_for=lambda fdc_id: raw_vector_from_fdc(_fake_fetch(fdc_id)),
+        transforms=load_transforms(default_config_dir()),
+        nutrient_vocab=_load_nutrient_vocab(),
+    )
 
 
 def _potassium_per_serving(client: _CaptureClient) -> float:
@@ -107,3 +118,46 @@ def test_boiling_and_draining_leaches_potassium_below_soup():
     assert drained_k < soup_k                        # draining discards the leached potassium
     # the soup keeps essentially all the raw potassium: 425 mg/100g * 907 g / 4 servings
     assert soup_k > 900.0
+
+
+class _LocalGraph:
+    """A fake graph serving the local-resolution reads (full-text food search + HAS_NUTRIENT_RAW)
+    that fdc-import would have populated, and capturing writes."""
+
+    def __init__(self) -> None:
+        self.writes: list[tuple[str, dict[str, Any]]] = []
+
+    def run(self, cypher: str, **params: Any) -> list[dict[str, Any]]:
+        if "queryNodes" in cypher:                                    # search_foods
+            query = str(params.get("query", "")).lower()
+            if "potato" in query:
+                return [{"fdc_id": "170026", "description": "Potatoes", "data_type": "sr_legacy_food",
+                         "score": 5.0}]
+            if "salt" in query:
+                return [{"fdc_id": "173468", "description": "Salt", "data_type": "sr_legacy_food",
+                         "score": 5.0}]
+            return []
+        if "HAS_NUTRIENT_RAW" in cypher and "RETURN n.nutrient_id" in cypher:  # read_raw_vector
+            if params.get("fdc_id") == "170026":
+                return [{"nutrient_id": "potassium", "amount": 425.0},
+                        {"nutrient_id": "sodium", "amount": 6.0}]
+            if params.get("fdc_id") == "173468":
+                return [{"nutrient_id": "sodium", "amount": 38758.0}]
+            return []
+        return []
+
+    def run_write(self, cypher: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+        self.writes.append((cypher, params))
+        return []
+
+
+def test_local_ingest_resolves_and_reads_raw_from_the_graph():
+    # the local path: resolve via the full-text index, read raw vectors from the graph, no FDC API
+    client = _LocalGraph()
+    _ingest_recipe(_drained_recipe(), _local_ingest_deps(client), client)
+
+    cooked_k = [p["amount_per_serving"] for _c, p in client.writes
+                if p.get("nutrient_id") == "potassium" and "amount_per_serving" in p]
+    assert cooked_k and cooked_k[0] > 0.0            # cooked from the graph's raw vector + transform
+    # the local path must NOT rewrite HAS_NUTRIENT_RAW; fdc-import already owns it
+    assert not any("HAS_NUTRIENT_RAW" in cypher for cypher, _ in client.writes)

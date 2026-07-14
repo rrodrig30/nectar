@@ -47,7 +47,7 @@ def _convert_unit(amount: float, from_unit: str, to_unit: str) -> float | None:
     return None
 
 
-def _load_contract_units(config_dir: str | Path | None) -> dict[str, str]:
+def load_contract_units(config_dir: str | Path | None = None) -> dict[str, str]:
     """nutrient_id -> canonical unit, from nutrients.yaml (the contract's target vocabulary)."""
     cfg = load_config("nutrients", config_dir)
     entries = cfg.get("nutrients", [])
@@ -111,7 +111,11 @@ def _extract_unit(entry: dict[str, Any]) -> str | None:
 
 
 def raw_vector_from_fdc(
-    food_json: dict[str, Any], config_dir: str | Path | None = None
+    food_json: dict[str, Any],
+    config_dir: str | Path | None = None,
+    *,
+    nutrient_map: dict[str, str] | None = None,
+    contract_units: dict[str, str] | None = None,
 ) -> dict[str, float]:
     """Parse an FDC `food()` record into a raw per-100g nutrient vector keyed by contract
     nutrient_id, unit-converted to each nutrient's canonical unit (nutrients.yaml).
@@ -120,9 +124,14 @@ def raw_vector_from_fdc(
     applied here; only the unit is converted. An entry whose number has no contract mapping, or
     whose FDC unit cannot be converted to the contract's canonical unit, is skipped rather than
     fabricated. EPA (629) and DHA (621) both map to omega3_epa_dha and are summed.
+
+    `nutrient_map` and `contract_units` may be passed in preloaded (see `load_fdc_nutrient_map` /
+    `load_contract_units`) so a bulk caller reads the config once rather than per food.
     """
-    nutrient_map = load_fdc_nutrient_map(config_dir)
-    contract_units = _load_contract_units(config_dir)
+    if nutrient_map is None:
+        nutrient_map = load_fdc_nutrient_map(config_dir)
+    if contract_units is None:
+        contract_units = load_contract_units(config_dir)
 
     entries = food_json.get("foodNutrients", [])
     totals: dict[str, float] = {}

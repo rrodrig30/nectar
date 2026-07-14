@@ -45,7 +45,6 @@ import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from nectar_contract import names
 
@@ -65,9 +64,12 @@ from nutriscrape.graph.client import GraphClient
 from nutriscrape.graph.readers import (
     MaterializeIngredient,
     MaterializeRecipe,
+    has_foods,
     read_dish_variant_nutrients,
+    read_raw_vector,
     read_recipe_inputs,
     read_recipes_for_materialize,
+    search_foods,
 )
 from nutriscrape.graph.schema import apply_schema
 from nutriscrape.graph.writers import (
@@ -105,9 +107,15 @@ from nutriscrape.nutrition.compose import IngredientFacts, compose_serving_vecto
 from nutriscrape.nutrition.distribution import distribution
 from nutriscrape.nutrition.normalize import to_canonical
 from nutriscrape.nutrition.transform import Preparation
+from nutriscrape.resolution.fdc_bulk import iter_bulk_foods
 from nutriscrape.resolution.fdc_client import FdcClient, FdcConfigError, FdcRequestError
-from nutriscrape.resolution.matcher import resolve_food
-from nutriscrape.resolution.nutrient_map import classify_food, raw_vector_from_fdc
+from nutriscrape.resolution.matcher import best_match, resolve_food
+from nutriscrape.resolution.nutrient_map import (
+    classify_food,
+    load_contract_units,
+    load_fdc_nutrient_map,
+    raw_vector_from_fdc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +214,56 @@ def run_knowledge() -> None:
 # ---------------------------------------------------------------------------------------- ingest
 
 
+# ------------------------------------------------------------------------------ fdc bulk import
+
+
+def _import_fdc_bulk(csv_dir: str, client: GraphClient,
+                     nutrient_vocab: dict[str, tuple[str, str]] | None = None) -> int:
+    """Load the FDC CSV bulk export at `csv_dir` into the graph: one `:Food` per food plus its raw
+    per-100g `HAS_NUTRIENT_RAW` vector, so resolution and cooked nutrition need no per-food FDC API
+    call. Reuses the same writers `run_ingest` uses. Split out so it is testable with a fake client."""
+    vocab = nutrient_vocab if nutrient_vocab is not None else _load_nutrient_vocab()
+    # :Nutrient nodes must exist before HAS_NUTRIENT_RAW (which matches them); write the small
+    # contract nutrient vocabulary once up front.
+    for nutrient_id, (name, unit) in vocab.items():
+        merge_nutrient(client, nutrient_id=nutrient_id, name=name, unit=unit)
+    provenance = make_provenance(source="fdc:bulk", confidence=0.95,
+                                 computed_by="resolution.fdc_bulk")
+    written = 0
+    for food in iter_bulk_foods(csv_dir):
+        merge_food(client, fdc_id=food.fdc_id, description=food.description,
+                   data_type=food.data_type, source_tier="fdc")
+        for nutrient_id, amount_per_100g in food.raw_per_100g.items():
+            write_has_nutrient_raw(client, fdc_id=food.fdc_id, nutrient_id=nutrient_id,
+                                   amount_per_100g=amount_per_100g, provenance=provenance)
+        written += 1
+        if written % 5000 == 0:
+            logger.info("fdc-import: %d foods written so far", written)
+    logger.info("fdc-import: wrote %d food(s) with raw nutrient vectors from %s", written, csv_dir)
+    return written
+
+
+def run_fdc_import() -> None:
+    """Import the USDA FDC CSV bulk export into the graph (`:Food` + `HAS_NUTRIENT_RAW`), so food
+    resolution and raw amounts come from the local graph instead of the rate-limited FDC API. Set
+    FDC_BULK_DIR to the extracted export directory (food.csv, nutrient.csv, food_nutrient.csv from
+    https://fdc.nal.usda.gov/download-datasets). Fully functional against a configured Neo4j; no-ops
+    with a log line when FDC_BULK_DIR is unset, so run-all is safe without a bulk export."""
+    csv_dir = os.environ.get("FDC_BULK_DIR")
+    if not csv_dir:
+        logger.warning(
+            "fdc-import: FDC_BULK_DIR is not set. Download the FDC CSV bulk export from "
+            "https://fdc.nal.usda.gov/download-datasets, extract it, and set FDC_BULK_DIR to the "
+            "directory holding food.csv / nutrient.csv / food_nutrient.csv. Nothing imported."
+        )
+        return
+    with GraphClient.from_env() as client:
+        _import_fdc_bulk(csv_dir, client)
+
+
+# ---------------------------------------------------------------------------------------- ingest
+
+
 @dataclass(frozen=True)
 class ResolvedFood:
     """The identity of a resolved FDC food (resolution/matcher over resolution/fdc_client)."""
@@ -218,21 +276,24 @@ class ResolvedFood:
 @dataclass
 class IngestDeps:
     """Injected collaborators for `_ingest_recipe`, so the extraction -> resolution -> nutrition
-    chain is unit-testable offline with fakes. Defaults are the real deterministic (model-free)
-    parsers and the FDC-derived nutrient mapping; `resolve`/`fetch_food` are supplied by
-    `run_ingest` (live FDC) or a test (fakes). No collaborator produces a nutrient number outside
-    `raw_vector` (FDC's own measured amounts) and the four-channel transform inside compose."""
+    chain is unit-testable offline with fakes. `resolve` maps a food string to a resolved FDC food;
+    `raw_vector_for` maps an fdc_id to its raw per-100g nutrient vector. Both have an FDC-API
+    implementation (`_api_ingest_deps`) and a local-graph implementation that reads what the
+    `fdc-import` stage wrote (`_local_ingest_deps`). No collaborator produces a nutrient number
+    outside FDC's own measured amounts and the four-channel transform inside compose."""
 
     resolve: Callable[[str], ResolvedFood | None]
-    fetch_food: Callable[[str], dict[str, Any]]
+    raw_vector_for: Callable[[str], dict[str, float]]
     transforms: Sequence[KnowledgeTransformCoeff]
     nutrient_vocab: dict[str, tuple[str, str]]
     parse_ingredient: Callable[[str], ParsedIngredient] = parse_ingredient_basic
     build_preparations: Callable[
         [Sequence[str], Sequence[str]], list[ParsedPreparation]
     ] = basic_preparation
-    raw_vector: Callable[[dict[str, Any]], dict[str, float]] = raw_vector_from_fdc
     classify: Callable[[str], list[str]] = classify_food
+    # Persist HAS_NUTRIENT_RAW during ingest (the API path). False on the local path, where the bulk
+    # import already wrote the food's raw vector, so ingest does not rewrite it per recipe.
+    persist_raw: bool = True
 
 
 def _sample_corpus_path() -> str:
@@ -354,32 +415,33 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
             prep_id=prep_id,
         )
         try:
-            food_json = deps.fetch_food(resolved.fdc_id)
+            raw_per_100g = deps.raw_vector_for(resolved.fdc_id)
         except FdcRequestError:
             logger.warning(
-                "ingest: recipe %s: FDC food fetch failed for %s; no nutrient vector this food",
+                "ingest: recipe %s: FDC lookup failed for %s; no nutrient vector this food",
                 raw.recipe_id,
                 resolved.fdc_id,
             )
             continue
-        raw_per_100g = deps.raw_vector(food_json)
         if not raw_per_100g:
             continue
-        # Persist the food's intrinsic raw per-100g vector (HAS_NUTRIENT_RAW) so `run_materialize`
-        # can re-cook this food under an alternative method with no FDC round trip.
-        raw_provenance = make_provenance(
-            source=f"fdc:{resolved.fdc_id}", confidence=0.9, computed_by="resolution.nutrient_map"
-        )
-        for nutrient_id, amount_per_100g in raw_per_100g.items():
-            name, unit = deps.nutrient_vocab.get(nutrient_id, (nutrient_id, ""))
-            merge_nutrient(client, nutrient_id=nutrient_id, name=name, unit=unit)
-            write_has_nutrient_raw(
-                client,
-                fdc_id=resolved.fdc_id,
-                nutrient_id=nutrient_id,
-                amount_per_100g=amount_per_100g,
-                provenance=raw_provenance,
+        if deps.persist_raw:
+            # Persist the food's intrinsic raw per-100g vector (HAS_NUTRIENT_RAW) so run_materialize
+            # can re-cook it with no FDC round trip. Skipped on the local path (fdc-import wrote it).
+            raw_provenance = make_provenance(
+                source=f"fdc:{resolved.fdc_id}", confidence=0.9,
+                computed_by="resolution.nutrient_map",
             )
+            for nutrient_id, amount_per_100g in raw_per_100g.items():
+                name, unit = deps.nutrient_vocab.get(nutrient_id, (nutrient_id, ""))
+                merge_nutrient(client, nutrient_id=nutrient_id, name=name, unit=unit)
+                write_has_nutrient_raw(
+                    client,
+                    fdc_id=resolved.fdc_id,
+                    nutrient_id=nutrient_id,
+                    amount_per_100g=amount_per_100g,
+                    provenance=raw_provenance,
+                )
         facts.append(
             IngredientFacts(
                 fdc_id=resolved.fdc_id,
@@ -448,21 +510,62 @@ def _real_resolver(fdc_client: FdcClient) -> Callable[[str], ResolvedFood | None
     return resolve
 
 
-def _real_food_fetcher(fdc_client: FdcClient) -> Callable[[str], dict[str, Any]]:
-    def fetch(fdc_id: str) -> dict[str, Any]:
-        return fdc_client.food(int(fdc_id))
+def _api_ingest_deps(fdc_client: FdcClient) -> IngestDeps:
+    """Deps that resolve foods and read raw vectors from the live USDA FDC API (needs FDC_API_KEY).
+    The nutrient/unit maps are loaded once and reused for every food."""
+    nutrient_map = load_fdc_nutrient_map()
+    contract_units = load_contract_units()
 
-    return fetch
+    def raw_vector_for(fdc_id: str) -> dict[str, float]:
+        return raw_vector_from_fdc(fdc_client.food(int(fdc_id)),
+                                   nutrient_map=nutrient_map, contract_units=contract_units)
+
+    return IngestDeps(
+        resolve=_real_resolver(fdc_client),
+        raw_vector_for=raw_vector_for,
+        transforms=load_transforms(default_config_dir()),
+        nutrient_vocab=_load_nutrient_vocab(),
+        persist_raw=True,
+    )
+
+
+def _local_resolver(client: GraphClient) -> Callable[[str], ResolvedFood | None]:
+    """Resolve a food string against the local :Food graph (bulk-imported) via the full-text index,
+    ranked by the same matcher the API path uses. No FDC API call."""
+    def resolve(food_str: str) -> ResolvedFood | None:
+        best = best_match(food_str, search_foods(client, food_str))
+        if best is None:
+            return None
+        candidate = best.candidate
+        return ResolvedFood(fdc_id=str(candidate.fdc_id), description=candidate.description,
+                            data_type=candidate.data_type)
+
+    return resolve
+
+
+def _local_ingest_deps(client: GraphClient) -> IngestDeps:
+    """Deps that resolve foods and read raw vectors from the local graph (populated by fdc-import),
+    so ingest needs no FDC API call or key."""
+    return IngestDeps(
+        resolve=_local_resolver(client),
+        raw_vector_for=lambda fdc_id: read_raw_vector(client, fdc_id),
+        transforms=load_transforms(default_config_dir()),
+        nutrient_vocab=_load_nutrient_vocab(),
+        persist_raw=False,
+    )
 
 
 def run_ingest() -> None:
     """Acquisition -> extraction -> resolution -> four-channel cooked nutrition over the recipe
-    corpus. `_acquire` selects the adapter by the corpus path extension: a `.csv` RecipeNLG dataset
-    dump, or a `.txt`/`.urls` list of schema.org recipe URLs. Runs over the bundled sample CSV by
-    default (NUTRISCRAPE_CORPUS overrides) with the deterministic parsers, so it works offline
-    without a running LLM. Food resolution and raw nutrient amounts come from the live USDA FDC API
-    and require FDC_API_KEY; without it, this logs how to obtain one and returns. Schema.org scraping
-    additionally needs recipe-scrapers and network.
+    corpus. `_acquire` selects the adapter by corpus extension (a `.csv` RecipeNLG dataset dump, or a
+    `.txt`/`.urls` list of schema.org recipe URLs). Runs over the bundled sample CSV by default
+    (NUTRISCRAPE_CORPUS overrides) with the deterministic parsers, so it works offline without a
+    running LLM.
+
+    Food resolution auto-selects its source: if the graph already holds `:Food` nodes (from the
+    fdc-import stage), it resolves against the local graph with no FDC API call; otherwise it uses
+    the live USDA FDC API (needs FDC_API_KEY). Schema.org scraping additionally needs recipe-scrapers
+    and network.
     """
     corpus = _sample_corpus_path()
     logger.info("ingest: reading recipe corpus from %s", corpus)
@@ -471,24 +574,24 @@ def run_ingest() -> None:
         logger.warning("ingest: no recipes found in %s; nothing to ingest", corpus)
         return
 
-    try:
-        fdc_client = FdcClient()
-    except FdcConfigError:
-        logger.warning(
-            "ingest: FDC_API_KEY is not set, so foods cannot be resolved against USDA FoodData "
-            "Central. Get a free key at https://api.data.gov/signup, set FDC_API_KEY, and re-run. "
-            "Read %d recipe(s) but wrote nothing this run.",
-            len(raw_recipes),
-        )
-        return
-
-    deps = IngestDeps(
-        resolve=_real_resolver(fdc_client),
-        fetch_food=_real_food_fetcher(fdc_client),
-        transforms=load_transforms(default_config_dir()),
-        nutrient_vocab=_load_nutrient_vocab(),
-    )
     with GraphClient.from_env() as client:
+        if has_foods(client):
+            logger.info("ingest: resolving foods against the local :Food graph (from fdc-import)")
+            deps = _local_ingest_deps(client)
+        else:
+            try:
+                fdc_client = FdcClient()
+            except FdcConfigError:
+                logger.warning(
+                    "ingest: no local :Food graph (run fdc-import) and FDC_API_KEY is not set, so "
+                    "foods cannot be resolved. Import the FDC bulk export (make fdc-import with "
+                    "FDC_BULK_DIR set) or set FDC_API_KEY. Read %d recipe(s), wrote nothing.",
+                    len(raw_recipes),
+                )
+                return
+            logger.info("ingest: resolving foods against the live USDA FDC API")
+            deps = _api_ingest_deps(fdc_client)
+
         for raw in raw_recipes:
             _ingest_recipe(raw, deps, client)
     logger.info("ingest: processed %d recipe(s) from %s", len(raw_recipes), corpus)

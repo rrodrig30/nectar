@@ -12,7 +12,12 @@ import pytest
 from nutriscrape import __main__ as cli
 from nutriscrape import pipeline
 
-_STAGE_FUNC_NAMES = ("run_schema", "run_ingest", "run_cluster", "run_knowledge", "run_materialize")
+_STAGE_FUNC_NAMES = ("run_schema", "run_knowledge", "run_fdc_import", "run_ingest",
+                     "run_cluster", "run_materialize")
+
+_RUN_ALL_EXPECTED = [
+    "run_schema", "run_knowledge", "run_fdc_import", "run_ingest", "run_cluster", "run_materialize",
+]
 
 
 @pytest.fixture
@@ -39,9 +44,10 @@ def test_unknown_stage_returns_exit_code_2() -> None:
     ("stage", "expected_func"),
     [
         ("schema", "run_schema"),
+        ("knowledge", "run_knowledge"),
+        ("fdc-import", "run_fdc_import"),
         ("ingest", "run_ingest"),
         ("cluster", "run_cluster"),
-        ("knowledge", "run_knowledge"),
         ("materialize", "run_materialize"),
     ],
 )
@@ -56,25 +62,13 @@ def test_known_stage_dispatches_to_matching_pipeline_function(
 def test_run_all_calls_stages_in_order(recorder: list[str]) -> None:
     exit_code = cli.main(["prog", "run-all"])
     assert exit_code == 0
-    assert recorder == [
-        "run_schema",
-        "run_ingest",
-        "run_cluster",
-        "run_knowledge",
-        "run_materialize",
-    ]
+    assert recorder == _RUN_ALL_EXPECTED
 
 
 def test_default_argv_dispatches_run_all(recorder: list[str]) -> None:
     exit_code = cli.main(["prog"])
     assert exit_code == 0
-    assert recorder == [
-        "run_schema",
-        "run_ingest",
-        "run_cluster",
-        "run_knowledge",
-        "run_materialize",
-    ]
+    assert recorder == _RUN_ALL_EXPECTED
 
 
 def test_stage_failure_is_caught_and_returns_exit_code_1(monkeypatch: pytest.MonkeyPatch) -> None:

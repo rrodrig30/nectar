@@ -1,0 +1,5 @@
+id,name,unit_name,nutrient_nbr,rank
+1092,"Potassium, K",MG,306,5300
+1093,"Sodium, Na",MG,307,5800
+1008,Energy,KCAL,208,300
+9999,"Made-up nutrient",MG,99999,9999
