@@ -1,0 +1,13 @@
+# NECTAR web (static build served by unprivileged nginx). Build from the repo root:
+#   podman build -t localhost/nectar-web:latest -f nectar/web/Containerfile .
+FROM docker.io/library/node:20-slim AS build
+WORKDIR /web
+COPY nectar/web/package.json nectar/web/package-lock.json* ./
+RUN npm ci
+COPY nectar/web/ ./
+RUN npm run build
+
+FROM docker.io/nginxinc/nginx-unprivileged:stable
+# nginx-unprivileged listens on 8080 and runs as a non-root user (rootless-friendly)
+COPY --from=build /web/dist /usr/share/nginx/html
+EXPOSE 8080

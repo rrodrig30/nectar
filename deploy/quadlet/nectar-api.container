@@ -1,0 +1,22 @@
+[Unit]
+Description=NECTAR API (read role)
+After=neo4j.service
+Wants=neo4j.service
+
+[Container]
+ContainerName=nectar-api
+Image=localhost/nectar-api:latest
+Network=nectar.network
+# not published; reached through Caddy
+EnvironmentFile=%h/.config/nectar/platform.env
+Environment=NEO4J_URI=bolt://neo4j:7687
+Environment=NEO4J_USER=nectar_reader
+Secret=nectar_reader_pass,type=env,target=NEO4J_PASSWORD
+# To enable Anthropic/OpenAI later, add:
+#   Secret=llm_api_key,type=env,target=LLM_API_KEY
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

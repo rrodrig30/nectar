@@ -1,0 +1,21 @@
+[Unit]
+Description=Caddy TLS reverse proxy (front door)
+After=nectar-api.service nectar-web.service
+Wants=nectar-api.service nectar-web.service
+
+[Container]
+ContainerName=caddy
+Image=docker.io/library/caddy:2
+Network=nectar.network
+# Rootless binding of 80/443 needs the unprivileged port floor lowered (see README).
+PublishPort=80:80
+PublishPort=443:443
+Volume=%h/.config/nectar/Caddyfile:/etc/caddy/Caddyfile:Z,ro
+Volume=caddy-data:/data:Z
+Volume=caddy-config:/config:Z
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

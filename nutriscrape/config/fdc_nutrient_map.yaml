@@ -1,0 +1,30 @@
+# USDA FDC nutrient numbers -> contract nutrient_id (see nutrients.yaml for the target
+# vocabulary and canonical unit per nutrient_id). Keys are the USDA FDC nutrient "number"
+# (the stable identifier FDC publishes on foodNutrients[].nutrient.number), quoted so YAML
+# keeps them as strings. Values are contract nutrient_id.
+#
+# Two FDC numbers (629 EPA, 621 DHA) map to the same contract nutrient_id, omega3_epa_dha;
+# resolution/nutrient_map.py sums their contributions rather than overwriting.
+nutrient_map:
+  "208": energy
+  "203": protein
+  "204": fat_total
+  "606": fat_saturated
+  "605": fat_trans
+  "645": fat_mono
+  "646": fat_poly
+  "205": carbohydrate
+  "269": sugar_total
+  "539": sugar_added
+  "291": fiber_total
+  "295": fiber_soluble
+  "307": sodium
+  "306": potassium
+  "305": phosphorus
+  "301": calcium
+  "304": magnesium
+  "303": iron
+  "430": vitamin_k
+  "508": phenylalanine
+  "629": omega3_epa_dha
+  "621": omega3_epa_dha

@@ -1,0 +1,13 @@
+[project]
+name = "nectar-contract"
+version = "1.0.0"
+description = "Shared data contract for the NECTAR platform (schema names, shared types)"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["nectar_contract*"]

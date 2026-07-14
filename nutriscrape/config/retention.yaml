@@ -1,0 +1,18 @@
+# Cooking-loss transform coefficients, seeded from USDA Nutrient Retention Factors (Release 6).
+# Four channels: concentration (mass balance), leaching (L), degradation (D), formation.
+# ILLUSTRATIVE. Geometry-resolved leach factors are mostly estimates; confidence must say so.
+sa_v_multiplier:            # cut geometry multiplier on leaching L
+  whole: 1.0
+  halved: 1.3
+  cubed: 2.7
+  diced: 4.0
+  grated: 6.0
+  mashed: 7.0
+l_max: 0.95
+transforms:
+  - {food_class: root_vegetable, method: boil, target: potassium, channel: leaching, L_base: 0.30,
+     mechanism: "water-soluble ion leaches into cooking medium", source: retn06, confidence: 0.5, evidence_tier: A}
+  - {food_class: leafy_green, method: boil, target: oxalate, channel: leaching, L_base: 0.40,
+     mechanism: "soluble oxalate partitions to water", source: literature, confidence: 0.4, evidence_tier: B}
+  - {food_class: starch, method: high_heat_fry, target: acrylamide, channel: formation, formation_rate: 1.0,
+     mechanism: "Maillard formation from asparagine + reducing sugars", source: literature, confidence: 0.4, evidence_tier: B}

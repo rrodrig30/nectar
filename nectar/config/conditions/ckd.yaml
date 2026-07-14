@@ -1,0 +1,11 @@
+# ILLUSTRATIVE placeholders, per serving, apportioned from daily targets. Dietitian review required.
+disease_id: ckd
+name: Chronic Kidney Disease
+icd10: N18
+guideline_org: KDOQI
+patterns: [renal]
+constraints:
+  - {nutrient: sodium,     type: restrict, unit: mg, max_per_serving: 600, hard_limit: 800, basis: "~2000 mg/day", guideline_id: kdoqi-sodium}
+  - {nutrient: potassium,  type: restrict, unit: mg, max_per_serving: 700, hard_limit: 1000, safety_critical: true, basis: "individualized placeholder", guideline_id: kdoqi-potassium}
+  - {nutrient: phosphorus, type: restrict, unit: mg, max_per_serving: 300, hard_limit: 450, basis: "800-1000 mg/day", guideline_id: kdoqi-phosphorus}
+  - {nutrient: protein,    type: restrict, unit: g,  max_per_serving: 20, basis: "0.6-0.8 g/kg/day pre-dialysis", guideline_id: kdoqi-protein}

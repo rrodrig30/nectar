@@ -1,0 +1,9 @@
+# Culinarily valid cooking methods per food class, for selective eager variant materialization.
+# ILLUSTRATIVE, dietitian/culinary review pending. A small, sane method list per class (the
+# nutriscrape PDD's "culinarily sane method list per food"), decoupled from which transform
+# coefficients happen to exist: a method with no coefficient still yields a valid variant whose
+# nutrients pass through unchanged (for example, baking does not leach potassium the way boiling does).
+method_coverage:
+  root_vegetable: [boil, bake, roast, steam, mash]
+  leafy_green:    [boil, steam, saute]
+  starch:         [boil, bake]

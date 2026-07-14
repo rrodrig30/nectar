@@ -1,0 +1,26 @@
+# Validated formulas for the deterministic patient abstraction. [INVARIANT] Code uses these,
+# not the LLM. ILLUSTRATIVE references; a clinician confirms derived constraints.
+egfr:
+  equation: CKD-EPI 2021 (creatinine)
+  inputs: [creatinine_mg_dl, age, sex]
+ckd_stage_from_egfr:
+  - {stage: "1",  min: 90}
+  - {stage: "2",  min: 60, max: 89}
+  - {stage: "3a", min: 45, max: 59}
+  - {stage: "3b", min: 30, max: 44}
+  - {stage: "4",  min: 15, max: 29}
+  - {stage: "5",  max: 14}
+energy:
+  equation: Mifflin-St Jeor
+  activity_factor: {sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725}
+  goal_adjustment_kcal:      # ILLUSTRATIVE placeholders, dietitian review required
+    loss: -500
+    gain: 500
+    maintenance: 0
+  envelope_band_kcal: 150    # +/- band around the daily energy target
+protein:
+  g_per_kg: 1.0              # ILLUSTRATIVE placeholder daily protein target, dietitian review
+lab_triggers:            # thresholds that switch on state / tighten constraints
+  hyperkalemia_mmol_l: 5.0     # serum K above this tightens the potassium ceiling
+  neutropenia_anc: 1000        # ANC below this activates the raw-food safety exclusion
+  anemia_hgb_g_dl: 12.0        # Hgb below this pulls in iron-bioavailability rules

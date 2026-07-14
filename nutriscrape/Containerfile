@@ -1,0 +1,20 @@
+# NutriScrape batch image. Build from the repo root:
+#   podman build -t localhost/nutriscrape:latest -f nutriscrape/Containerfile .
+FROM docker.io/library/python:3.11-slim AS build
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+WORKDIR /app
+# shared contract package first, then the program
+COPY contract/nectar_contract ./nectar_contract
+COPY nutriscrape/pyproject.toml ./
+RUN pip install --upgrade pip && pip install .
+COPY nutriscrape/src ./src
+COPY nutriscrape/config ./config
+
+FROM docker.io/library/python:3.11-slim
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=build /app /app
+# entrypoint dispatches a stage: ingest | cluster | knowledge | materialize | run-all
+ENTRYPOINT ["python", "-m", "nutriscrape"]
+CMD ["run-all"]

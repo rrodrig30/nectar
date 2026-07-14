@@ -1,0 +1,20 @@
+[Unit]
+Description=NECTAR writeback / promotion service (gated write role)
+After=neo4j.service
+Wants=neo4j.service
+
+[Container]
+ContainerName=nectar-writeback
+Image=localhost/nectar-api:latest
+Network=nectar.network
+EnvironmentFile=%h/.config/nectar/platform.env
+Environment=NEO4J_URI=bolt://neo4j:7687
+Environment=NEO4J_USER=promotion_writer
+Secret=promotion_pass,type=env,target=NEO4J_PASSWORD
+Exec=uvicorn nectar.research.writeback_app:app --host 0.0.0.0 --port 8100
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

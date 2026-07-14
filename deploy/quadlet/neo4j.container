@@ -1,0 +1,28 @@
+[Unit]
+Description=Neo4j shared graph + vector database
+
+[Container]
+ContainerName=neo4j
+Image=docker.io/library/neo4j:5-enterprise
+Network=nectar.network
+# bolt (7687) and http (7474) stay internal; only Caddy is exposed.
+Volume=neo4j-data:/data:Z
+Volume=neo4j-import:/import:Z
+# Enterprise is required for the role-based read/write split (see README).
+# eval/development license; appropriate for research and education use.
+Environment=NEO4J_ACCEPT_LICENSE_AGREEMENT=eval
+# tune to the host; starter values below
+Environment=NEO4J_server_memory_heap_initial__size=2G
+Environment=NEO4J_server_memory_heap_max__size=4G
+Environment=NEO4J_server_memory_pagecache_size=4G
+# initial admin credential, format neo4j/<password>
+Secret=neo4j_auth,type=env,target=NEO4J_AUTH
+HealthCmd=wget -qO- http://localhost:7474 || exit 1
+HealthStartPeriod=60s
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

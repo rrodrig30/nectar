@@ -1,0 +1,107 @@
+# NECTAR data source manifest. Trust tier maps to DATA_CONTRACT source_tier.
+# Verify licenses before any redistribution. Links current as of 2026-07.
+
+recipes:
+  recipenlg:
+    role: primary bulk corpus
+    url: https://recipenlg.cs.put.poznan.pl
+    mirror: https://huggingface.co/datasets/mbien/recipe_nlg
+    access: bulk download
+    license: non-commercial research and educational use only
+    note: subsumes Recipe1M+; do not ingest Recipe1M+ separately
+  recipe_scrapers:
+    role: structured extraction from permitted sites
+    url: https://github.com/hhursev/recipe-scrapers
+    access: library (schema.org JSON-LD / Microdata / RDFa / OpenGraph)
+    license: MIT
+    note: does not bypass bot protection; respect robots.txt and terms
+
+composition:
+  usda_fdc:
+    role: primary composition (Foundation, SR Legacy, FNDDS)
+    url: https://fdc.nal.usda.gov
+    api: https://fdc.nal.usda.gov/api-guide
+    key: https://api.data.gov/signup
+    access: bulk download preferred; API for targeted resolution
+    license: public domain (CC0)
+    trust_tier: 1
+  usda_retention_factors:
+    role: degradation and leaching baselines for transforms
+    url: https://agdatacommons.nal.usda.gov/articles/dataset/24660888
+    pdf: https://www.ars.usda.gov/arsuserfiles/80400530/pdf/retn06.pdf
+    license: public domain (CC0)
+    trust_tier: 1
+  ciqual:
+    role: cross-check, EU foods
+    url: https://ciqual.anses.fr
+    license: OpenData
+    trust_tier: 2
+  cofid:
+    role: cross-check; carries vitamin K (warfarin rule)
+    url: https://www.gov.uk/government/publications/composition-of-foods-integrated-dataset-cofid
+    license: end-user license with indemnification clause; reference only
+    trust_tier: 2
+  frida:
+    role: cross-check, bioactives
+    url: https://frida.fooddata.dk
+    license: free, registration
+    trust_tier: 2
+  open_food_facts:
+    role: branded/packaged, allergen tags
+    url: https://world.openfoodfacts.org/data
+    access: daily bulk exports preferred over API
+    license: Open Database License (ODbL)
+    trust_tier: 3
+
+compounds:
+  foodb:
+    role: broad food-compound chemistry
+    url: https://foodb.ca
+    license: open-access
+  phenol_explorer:
+    role: polyphenols, with processing effects
+    url: http://phenol-explorer.eu
+    license: open-access
+  ebasis:
+    role: curated bioactives
+    url: https://www.eurofir.org
+    license: membership
+  gi_database:
+    role: glycemic index and load
+    url: https://glycemicindex.com
+    access: searchable, not bulk-redistributable; pair with published GI/GL tables
+  gap_note: >
+    oxalate, purine, tyramine, furanocoumarin quantitation have no single open source.
+    These are literature-compiled into the curated knowledge base (evidence tiers), not downloaded.
+
+interactions:
+  rxnorm:
+    role: normalize medications to RXCUI
+    url: https://rxnav.nlm.nih.gov
+    license: free APIs (RxNav-in-a-Box needs UMLS license)
+  drugbank:
+    role: interaction mechanisms and severity
+    url: https://go.drugbank.com
+    license: non-commercial academic free (no severity); commercial otherwise
+  flockhart_cyp:
+    role: CYP substrate/inhibitor/inducer reference (grapefruit = CYP3A4)
+    url: https://drug-interactions.medicine.iu.edu
+    license: free clinical reference
+
+guidelines:
+  ckd_kdoqi:
+    url: https://www.ajkd.org/article/S0272-6386(20)30726-5/fulltext
+    edition: "2020"
+  diabetes_ada:
+    url: https://professional.diabetes.org/standards-of-care
+    edition: "2026 (living)"
+  hypertension_dash:
+    url: https://www.nhlbi.nih.gov/education/dash-eating-plan
+  cad_aha:
+    url: https://www.heart.org
+  general_dga:
+    url: https://www.dietaryguidelines.gov
+    edition: "2025-2030"
+  allergens_fda:
+    url: https://www.fda.gov/food/food-labeling-nutrition/food-allergies
+    note: 9 major allergens incl sesame (FASTER Act)

@@ -1,0 +1,21 @@
+[Unit]
+Description=NutriScrape batch pipeline (run to completion)
+After=neo4j.service
+Requires=neo4j.service
+
+[Container]
+ContainerName=nutriscrape
+Image=localhost/nutriscrape:latest
+Network=nectar.network
+EnvironmentFile=%h/.config/nectar/platform.env
+Environment=NEO4J_URI=bolt://neo4j:7687
+Environment=NEO4J_USER=nutriscrape_writer
+Secret=nutriscrape_pass,type=env,target=NEO4J_PASSWORD
+Volume=corpus-staging:/data:Z
+# override the stage per run, e.g. systemctl --user start nutriscrape
+# or: podman run ... localhost/nutriscrape:latest ingest
+Exec=run-all
+
+[Service]
+Type=oneshot
+# not enabled at boot; triggered manually or by an optional .timer

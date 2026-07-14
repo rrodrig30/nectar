@@ -1,0 +1,14 @@
+[Unit]
+Description=NECTAR web (static frontend)
+
+[Container]
+ContainerName=nectar-web
+Image=localhost/nectar-web:latest
+Network=nectar.network
+# serves on 8080 internally; Caddy proxies to it
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

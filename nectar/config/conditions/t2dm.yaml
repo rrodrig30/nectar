@@ -1,0 +1,9 @@
+# ILLUSTRATIVE placeholders.
+disease_id: t2dm
+name: Type 2 Diabetes
+icd10: E11
+guideline_org: ADA
+patterns: [low_glycemic]
+constraints:
+  - {nutrient: sugar_added,  type: restrict, unit: g, max_per_serving: 10, basis: "limit added sugar", guideline_id: ada-addedsugar}
+  - {nutrient: fiber_total,  type: target,   unit: g, goal: 10, basis: ">14 g/1000 kcal", guideline_id: ada-fiber}

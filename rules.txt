@@ -1,0 +1,34 @@
+No fallbacks, No placeholders, No simulations, No mock code, No demo code, No simplified version, No partially functioning version, No nonfunctional code, No emergency bypasses, No crippled code, No frontend errors, No blueprint errors, No router errors, No orphan code, No backend/front end connection errors, No missing backend, No missing DOMs No missing or outdated API endpoints, No duplicate API endpoints. I want everything to function as intended by design.
+
+No example forms/reports - All UI elements generate real data from actual system operations
+No hardcoded elements - All configuration values are loaded from .env variables
+Environment-driven - Complete .env configuration system for all global variables
+
+
+In all refactoring, you must use chain of thought reasoning and tree of thought assessment as follows:
+
+
+Chain of Thought (COT) Analysis
+Each task will be analyzed using systematic reasoning:
+1. Problem identification and root cause analysis (ultrahard thinking)
+2. Solution design and architecture review
+3. Implementation planning and dependency mapping
+4. Testing strategy and validation approach
+5. Risk assessment and mitigation planning
+
+Tree of Thought (TOT) Evaluation
+Solutions will be evaluated using multiple criteria:
+1. Reliability: Solution stability and error handling
+2. Efficiency: Performance impact and resource usage
+3. Completeness: Full implementation without fallbacks, with all interdependent relationships addressed
+4. Scalability: Ability to handle growth and load
+5. Compliance: Follow all the rules regarding no mock code, fallbacks, placeholder code, TODOs or nonfunctional code.
+
+Success Criteria
+- All errors resolved without exception
+- All user-reported issues addressed
+- All mock/dummy code replaced with real implementations
+- Comprehensive testing with 100% functionality
+- Performance targets met
+- Security requirements fully implemented
+- Accessibility standards (WCAG 2.1 AA) achieved

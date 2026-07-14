@@ -1,0 +1,19 @@
+[Unit]
+Description=Ollama local LLM backend (GPU)
+
+[Container]
+ContainerName=ollama
+Image=docker.io/ollama/ollama:latest
+Network=nectar.network
+Volume=ollama-models:/root/.ollama:Z
+# GPU via CDI. Requires: sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+AddDevice=nvidia.com/gpu=all
+Environment=OLLAMA_HOST=0.0.0.0:11434
+# 11434 stays internal to the nectar network.
+
+[Service]
+Restart=always
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

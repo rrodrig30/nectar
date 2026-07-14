@@ -1,0 +1,18 @@
+# Keyword -> food_class tags. Tags match the food_class names used by the TRANSFORM knowledge
+# base in retention.yaml (root_vegetable, leafy_green, starch). Matching is a case-insensitive
+# substring match of the keyword against the FDC food description; a food may match several
+# keywords and so carry several classes (a potato is both root_vegetable and starch).
+food_class:
+  potato: [root_vegetable, starch]
+  carrot: [root_vegetable]
+  beet: [root_vegetable]
+  turnip: [root_vegetable]
+  parsnip: [root_vegetable]
+  spinach: [leafy_green]
+  kale: [leafy_green]
+  chard: [leafy_green]
+  collard: [leafy_green]
+  bread: [starch]
+  rice: [starch]
+  pasta: [starch]
+  flour: [starch]

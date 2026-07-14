@@ -1,0 +1,6 @@
+[Unit]
+Description=NECTAR platform network
+
+[Network]
+NetworkName=nectar
+# Containers on this network resolve each other by ContainerName (internal DNS).

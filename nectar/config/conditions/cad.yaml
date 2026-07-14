@@ -1,0 +1,11 @@
+# ILLUSTRATIVE placeholders.
+disease_id: cad
+name: Coronary Artery Disease
+icd10: I25
+guideline_org: AHA/ACC
+patterns: [cardioprotective]
+constraints:
+  - {nutrient: fat_saturated, type: restrict, unit: g,  max_per_serving: 5, basis: "<6% energy", guideline_id: aha-satfat}
+  - {nutrient: fat_trans,     type: restrict, unit: g,  max_per_serving: 0.5, hard_limit: 1, basis: "minimize", guideline_id: aha-trans}
+  - {nutrient: sodium,        type: restrict, unit: mg, max_per_serving: 600, basis: "<2300 mg/day", guideline_id: aha-sodium}
+  - {nutrient: fiber_total,   type: target,   unit: g,  goal: 8, basis: "increase", guideline_id: aha-fiber}

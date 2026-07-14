@@ -1,0 +1,12 @@
+# NECTAR runtime settings. LLM backend is Ollama now; switch via env (see deploy/env/platform.env).
+llm:
+  backend: ${LLM_BACKEND:-ollama}
+  base_url: ${LLM_BASE_URL:-http://ollama:11434}
+  generation_model: ${LLM_GENERATION_MODEL:-llama3.1:8b}
+  temperature: ${LLM_TEMPERATURE:-0.2}
+  context_window: ${LLM_CONTEXT_WINDOW:-8192}
+embeddings:
+  model: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+presentation:
+  default_unit_system: us      # us | metric
+  default_temp_scale: F        # F | C

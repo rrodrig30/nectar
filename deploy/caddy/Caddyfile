@@ -1,0 +1,12 @@
+# Replace with your Ionos domain. Caddy obtains and renews TLS automatically.
+nectar.example.org {
+    encode zstd gzip
+    handle /api/* {
+        reverse_proxy nectar-api:8000
+    }
+    handle {
+        reverse_proxy nectar-web:8080
+    }
+}
+# ACME HTTP-01 needs inbound 80/443 open on the GVTC static IP.
+# To avoid opening 80, use DNS-01 with the Ionos provider plugin instead.

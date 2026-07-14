@@ -1,0 +1,11 @@
+# ILLUSTRATIVE placeholders. Note: potassium is a TARGET here and a RESTRICT in ckd.yaml.
+# The conflict resolver must catch this (safety-dominant restriction wins for CKD+HTN).
+disease_id: htn
+name: Hypertension
+icd10: I10
+guideline_org: DASH / ACC-AHA
+patterns: [dash]
+constraints:
+  - {nutrient: sodium,    type: restrict, unit: mg, max_per_serving: 500, hard_limit: 800, basis: "<1500-2300 mg/day", guideline_id: dash-sodium}
+  - {nutrient: potassium, type: target,   unit: mg, goal: 1500, basis: "3500-5000 mg/day", guideline_id: dash-potassium}
+  - {nutrient: fiber_total, type: target, unit: g,  goal: 8, basis: "increase", guideline_id: dash-fiber}

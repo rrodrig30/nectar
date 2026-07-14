@@ -1,0 +1,19 @@
+# NECTAR API image. Build from the repo root:
+#   podman build -t localhost/nectar-api:latest -f nectar/Containerfile .
+FROM docker.io/library/python:3.11-slim AS build
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
+WORKDIR /app
+COPY contract/nectar_contract ./nectar_contract
+COPY nectar/pyproject.toml ./
+RUN pip install --upgrade pip && pip install .
+COPY nectar/src ./src
+COPY nectar/config ./config
+
+FROM docker.io/library/python:3.11-slim
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY --from=build /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=build /app /app
+EXPOSE 8000
+# same image runs the API or the writeback service, chosen by the command
+CMD ["uvicorn", "nectar.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,0 +1,23 @@
+# Canonical speciated nutrient vocabulary. Amounts stored per serving, canonical units.
+nutrients:
+  - {id: energy,        name: Energy,               unit: kcal}
+  - {id: protein,       name: Protein,              unit: g}
+  - {id: fat_total,     name: Total fat,            unit: g}
+  - {id: fat_saturated, name: Saturated fat,        unit: g, form: saturated}
+  - {id: fat_trans,     name: Trans fat,            unit: g, form: trans}
+  - {id: fat_mono,      name: Monounsaturated fat,  unit: g, form: mono}
+  - {id: fat_poly,      name: Polyunsaturated fat,  unit: g, form: poly}
+  - {id: omega3_epa_dha,name: EPA+DHA,              unit: mg, form: epa_dha}
+  - {id: carbohydrate,  name: Carbohydrate,         unit: g}
+  - {id: sugar_added,   name: Added sugar,          unit: g, form: added}
+  - {id: sugar_total,   name: Total sugar,          unit: g}
+  - {id: fiber_soluble, name: Soluble fiber,        unit: g, form: soluble}
+  - {id: fiber_total,   name: Total fiber,          unit: g}
+  - {id: sodium,        name: Sodium,               unit: mg}
+  - {id: potassium,     name: Potassium,            unit: mg}
+  - {id: phosphorus,    name: Phosphorus,           unit: mg}
+  - {id: calcium,       name: Calcium,              unit: mg}
+  - {id: magnesium,     name: Magnesium,            unit: mg}
+  - {id: iron,          name: Iron,                 unit: mg}
+  - {id: vitamin_k,     name: Vitamin K,            unit: mcg}
+  - {id: phenylalanine, name: Phenylalanine,        unit: mg}

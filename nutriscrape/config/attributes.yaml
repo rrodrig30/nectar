@@ -1,0 +1,21 @@
+# Food attributes / allergens / provenance. Prep-resolved attributes (raw) are set on the
+# RecipeVariant, not the Food. ILLUSTRATIVE starter set; expand under curation.
+attributes:
+  - {id: raw_animal_protein,  family: food_safety}
+  - {id: unpasteurized_dairy, family: food_safety}
+  - {id: aged_fermented,      family: high_tyramine}
+  - {id: alcohol_containing,  family: alcohol}
+allergens:
+  - {id: milk,     family: dairy,    derivatives: [whey, casein]}
+  - {id: egg,      family: egg}
+  - {id: fish,     family: fish}
+  - {id: shellfish,family: crustacean}
+  - {id: tree_nut, family: tree_nut}
+  - {id: peanut,   family: legume}
+  - {id: wheat,    family: gluten}
+  - {id: soy,      family: legume,   derivatives: [lecithin]}
+  - {id: sesame,   family: seed}
+provenance:
+  - {id: pork,     family: animal_source}
+  - {id: gelatin,  family: animal_source}
+  - {id: cooking_alcohol, family: alcohol}
