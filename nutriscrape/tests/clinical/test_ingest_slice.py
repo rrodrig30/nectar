@@ -137,6 +137,12 @@ class _LocalGraph:
                 return [{"fdc_id": "173468", "description": "Salt", "data_type": "sr_legacy_food",
                          "score": 5.0}]
             return []
+        if "HAS_NUTRIENT_RAW" in cypher and "AS vector" in cypher:    # read_all_raw_vectors (preload)
+            return [
+                {"fdc_id": "170026", "vector": [{"nutrient_id": "potassium", "amount": 425.0},
+                                                {"nutrient_id": "sodium", "amount": 6.0}]},
+                {"fdc_id": "173468", "vector": [{"nutrient_id": "sodium", "amount": 38758.0}]},
+            ]
         if "HAS_NUTRIENT_RAW" in cypher and "RETURN n.nutrient_id" in cypher:  # read_raw_vector
             if params.get("fdc_id") == "170026":
                 return [{"nutrient_id": "potassium", "amount": 425.0},
@@ -161,3 +167,7 @@ def test_local_ingest_resolves_and_reads_raw_from_the_graph():
     assert cooked_k and cooked_k[0] > 0.0            # cooked from the graph's raw vector + transform
     # the local path must NOT rewrite HAS_NUTRIENT_RAW; fdc-import already owns it
     assert not any("HAS_NUTRIENT_RAW" in cypher for cypher, _ in client.writes)
+    # nor re-MERGE the shared :Food / :Nutrient nodes fdc-import already wrote: that redundant write
+    # is the parallel-batch deadlock source, and the CONTAINS / HAS_NUTRIENT writers MATCH them.
+    assert not any("MERGE (f:Food" in cypher for cypher, _ in client.writes)
+    assert not any("MERGE (n:Nutrient" in cypher for cypher, _ in client.writes)

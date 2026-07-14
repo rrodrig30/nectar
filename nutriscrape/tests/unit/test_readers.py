@@ -3,6 +3,7 @@ from typing import Any
 
 from nutriscrape.graph.readers import (
     has_foods,
+    read_all_raw_vectors,
     read_dish_variant_nutrients,
     read_raw_vector,
     read_recipe_inputs,
@@ -117,6 +118,23 @@ def test_search_foods_neutralizes_lucene_operator_words():
     # bare reserved words never reach Lucene as operators
     for token in query.split():
         assert token.startswith('"') and token.endswith('"')
+
+
+def test_read_all_raw_vectors_groups_by_fdc_id():
+    rows = [
+        {"fdc_id": "170026", "vector": [
+            {"nutrient_id": "potassium", "amount": 425.0},
+            {"nutrient_id": "sodium", "amount": 6.0},
+            {"nutrient_id": None, "amount": None},   # dropped
+        ]},
+        {"fdc_id": "173468", "vector": [{"nutrient_id": "sodium", "amount": 38758.0}]},
+        {"fdc_id": None, "vector": []},              # dropped
+    ]
+    result = read_all_raw_vectors(_FakeReadClient(rows))
+    assert result == {
+        "170026": {"potassium": 425.0, "sodium": 6.0},
+        "173468": {"sodium": 38758.0},
+    }
 
 
 def test_read_raw_vector_skips_null_rows():

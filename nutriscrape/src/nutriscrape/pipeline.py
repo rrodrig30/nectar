@@ -43,6 +43,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,8 +67,8 @@ from nutriscrape.graph.readers import (
     MaterializeIngredient,
     MaterializeRecipe,
     has_foods,
+    read_all_raw_vectors,
     read_dish_variant_nutrients,
-    read_raw_vector,
     read_recipe_inputs,
     read_recipes_for_materialize,
     search_foods,
@@ -327,6 +328,13 @@ class IngestDeps:
     # Persist HAS_NUTRIENT_RAW during ingest (the API path). False on the local path, where the bulk
     # import already wrote the food's raw vector, so ingest does not rewrite it per recipe.
     persist_raw: bool = True
+    # Whether to MERGE the shared :Food and :Nutrient nodes each recipe references. True on the API
+    # path (they may not exist yet). False on the local path, where fdc-import already created every
+    # food and the nutrient vocabulary: the CONTAINS / HAS_NUTRIENT writers MATCH (never create)
+    # those endpoints, so re-MERGEing them per recipe is redundant work and, under parallel batches,
+    # the shared-node write lock that produces Neo4j deadlocks. Skipping them is the main scale win.
+    persist_food: bool = True
+    persist_nutrient_vocab: bool = True
 
 
 def _sample_corpus_path() -> str:
@@ -411,13 +419,14 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
                 ingredient.food,
             )
             continue
-        merge_food(
-            client,
-            fdc_id=resolved.fdc_id,
-            description=resolved.description,
-            data_type=resolved.data_type,
-            source_tier="fdc",
-        )
+        if deps.persist_food:
+            merge_food(
+                client,
+                fdc_id=resolved.fdc_id,
+                description=resolved.description,
+                data_type=resolved.data_type,
+                source_tier="fdc",
+            )
         try:
             canonical = to_canonical(ingredient.quantity or 0.0, ingredient.unit or "g")
         except UnitError:
@@ -502,7 +511,8 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
     link_recipe_variant(client, recipe_id=raw.recipe_id, variant_id=variant_id)
     for nutrient_id, nutrient in cooked.items():
         name, unit = deps.nutrient_vocab.get(nutrient_id, (nutrient_id, ""))
-        merge_nutrient(client, nutrient_id=nutrient_id, name=name, unit=unit)
+        if deps.persist_nutrient_vocab:
+            merge_nutrient(client, nutrient_id=nutrient_id, name=name, unit=unit)
         write_has_nutrient(
             client,
             variant_id=variant_id,
@@ -562,29 +572,80 @@ def _api_ingest_deps(fdc_client: FdcClient) -> IngestDeps:
     )
 
 
+_MEASURE_PACKAGING = frozenset({
+    "oz", "ounce", "ounces", "lb", "lbs", "pound", "pounds", "g", "kg", "mg", "ml", "l",
+    "c", "cup", "cups", "tsp", "teaspoon", "teaspoons", "tbsp", "tablespoon", "tablespoons",
+    "can", "cans", "pkg", "pkgs", "package", "packages", "jar", "jars", "bottle", "bottles",
+    "box", "boxes", "bag", "bags", "stick", "sticks", "pint", "pints", "quart", "quarts",
+    "gallon", "gallons", "dash", "pinch", "container", "containers", "carton", "cartons",
+    "small", "medium", "large",
+})
+_QTY_TOKEN = re.compile(r"^[0-9]+([/.\-][0-9]+)*$")   # 12, 1/2, 3.5, 9-inch's "9"
+
+
+def _normalize_food_query(food: str) -> str:
+    """Reduce a raw ingredient food string to its core food words for local resolution.
+
+    The heuristic ingredient parser leaves quantity, unit and packaging noise on the food field
+    ("(16 oz.) can tomatoes", "c. Bisquick"), which both matches FDC poorly and makes every string
+    unique so the resolution cache never hits. Dropping parentheticals, punctuation, pure-number
+    tokens and measure/packaging words collapses these to the food noun ("tomatoes", "bisquick"),
+    which resolves better and recurs across recipes so the cache actually pays off. This shapes only
+    the lookup key, never a stored value or a nutrient number.
+    """
+    text = re.sub(r"\([^)]*\)", " ", food).lower()          # drop parenthetical groups
+    text = re.sub(r"[^a-z0-9/ ]+", " ", text)               # punctuation -> space
+    tokens = [
+        tok for tok in text.split()
+        if tok not in _MEASURE_PACKAGING and not _QTY_TOKEN.match(tok)
+    ]
+    return " ".join(tokens).strip()
+
+
 def _local_resolver(client: GraphClient) -> Callable[[str], ResolvedFood | None]:
     """Resolve a food string against the local :Food graph (bulk-imported) via the full-text index,
-    ranked by the same matcher the API path uses. No FDC API call."""
+    ranked by the same matcher the API path uses. No FDC API call.
+
+    Memoized: the same food strings ("salt", "butter", "2 eggs") recur across millions of recipes,
+    so each distinct string costs one full-text query the first time and a dict hit thereafter. The
+    cache lives for the batch (one GraphClient per batch), which is where the recurrence is."""
+    cache: dict[str, ResolvedFood | None] = {}
+
     def resolve(food_str: str) -> ResolvedFood | None:
-        best = best_match(food_str, search_foods(client, food_str))
-        if best is None:
-            return None
-        candidate = best.candidate
-        return ResolvedFood(fdc_id=str(candidate.fdc_id), description=candidate.description,
-                            data_type=candidate.data_type)
+        key = _normalize_food_query(food_str) or food_str.strip().lower()
+        if key in cache:
+            return cache[key]
+        best = best_match(key, search_foods(client, key))
+        resolved = (
+            None if best is None
+            else ResolvedFood(fdc_id=str(best.candidate.fdc_id),
+                              description=best.candidate.description,
+                              data_type=best.candidate.data_type)
+        )
+        cache[key] = resolved
+        return resolved
 
     return resolve
 
 
 def _local_ingest_deps(client: GraphClient) -> IngestDeps:
     """Deps that resolve foods and read raw vectors from the local graph (populated by fdc-import),
-    so ingest needs no FDC API call or key."""
+    so ingest needs no FDC API call or key.
+
+    Tuned for corpus scale: raw vectors are preloaded once (the whole small HAS_NUTRIENT_RAW table)
+    and served from memory, resolution is memoized, and the shared :Food / :Nutrient nodes are not
+    re-MERGEd per recipe (fdc-import already wrote them; the relationship writers MATCH them). This
+    removes the per-ingredient read round trips and the shared-node write locks that otherwise cap
+    throughput and deadlock parallel batches."""
+    raw_vectors = read_all_raw_vectors(client)
     return IngestDeps(
         resolve=_local_resolver(client),
-        raw_vector_for=lambda fdc_id: read_raw_vector(client, fdc_id),
+        raw_vector_for=lambda fdc_id: raw_vectors.get(fdc_id, {}),
         transforms=load_transforms(default_config_dir()),
         nutrient_vocab=_load_nutrient_vocab(),
         persist_raw=False,
+        persist_food=False,
+        persist_nutrient_vocab=False,
     )
 
 
@@ -626,7 +687,8 @@ def run_ingest() -> None:
             deps = _api_ingest_deps(fdc_client)
 
         for raw in raw_recipes:
-            _ingest_recipe(raw, deps, client)
+            with client.batch():   # one transaction per recipe (amortizes commit cost)
+                _ingest_recipe(raw, deps, client)
     logger.info("ingest: processed %d recipe(s) from %s", len(raw_recipes), corpus)
 
 
@@ -664,7 +726,10 @@ def ingest_batch(recipes: Sequence[RawRecipe], use_local: bool) -> int:
     with GraphClient.from_env() as client:
         deps = _local_ingest_deps(client) if use_local else _api_ingest_deps(FdcClient())
         for raw in recipes:
-            _ingest_recipe(raw, deps, client)
+            # One transaction per recipe: dozens of per-recipe writes commit together instead of
+            # one fsync each. This is the main ingest throughput win at corpus scale.
+            with client.batch():
+                _ingest_recipe(raw, deps, client)
     return len(recipes)
 
 

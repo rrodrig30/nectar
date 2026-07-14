@@ -193,6 +193,12 @@ MATCH (f:{names.FOOD} {{fdc_id: $fdc_id}})-[h:{names.HAS_NUTRIENT_RAW}]->(n:{nam
 RETURN n.nutrient_id AS nutrient_id, h.amount_per_100g AS amount
 """
 
+_READ_ALL_RAW_VECTORS = f"""
+MATCH (f:{names.FOOD})-[h:{names.HAS_NUTRIENT_RAW}]->(n:{names.NUTRIENT})
+RETURN f.fdc_id AS fdc_id,
+       collect({{nutrient_id: n.nutrient_id, amount: h.amount_per_100g}}) AS vector
+"""
+
 _HAS_FOODS = f"MATCH (f:{names.FOOD}) RETURN f LIMIT 1"
 
 
@@ -227,11 +233,31 @@ def read_raw_vector(client: GraphClient, fdc_id: str) -> dict[str, float]:
     }
 
 
+def read_all_raw_vectors(client: GraphClient) -> dict[str, dict[str, float]]:
+    """Every food's raw per-100g vector, keyed by fdc_id, in one query. At corpus scale ingest
+    resolves the same foods across millions of recipes, so loading the whole (small) bulk-imported
+    HAS_NUTRIENT_RAW table once and serving vectors from memory replaces one Neo4j round trip per
+    ingredient per recipe. The table is ~thousands of foods, so it fits in memory comfortably."""
+    rows = client.run(_READ_ALL_RAW_VECTORS)
+    out: dict[str, dict[str, float]] = {}
+    for row in rows:
+        fdc_id = row.get("fdc_id")
+        if fdc_id is None:
+            continue
+        vector = {
+            str(pair["nutrient_id"]): float(pair["amount"])
+            for pair in row.get("vector") or []
+            if pair.get("nutrient_id") is not None and pair.get("amount") is not None
+        }
+        out[str(fdc_id)] = vector
+    return out
+
+
 def has_foods(client: GraphClient) -> bool:
     """Whether the graph holds any :Food node (that is, whether fdc-import has populated it)."""
     return bool(client.run(_HAS_FOODS))
 
 
 __all__ = ["read_recipe_inputs", "read_recipes_for_materialize", "read_dish_variant_nutrients",
-           "search_foods", "read_raw_vector", "has_foods",
+           "search_foods", "read_raw_vector", "read_all_raw_vectors", "has_foods",
            "MaterializeRecipe", "MaterializeIngredient"]

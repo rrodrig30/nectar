@@ -1,8 +1,30 @@
 """Unit tests for the parallel-ingest building blocks: batching and per-batch ingest (no Prefect)."""
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from nutriscrape import pipeline
 from nutriscrape.acquisition.adapters.base import RawRecipe
+from nutriscrape.pipeline import _normalize_food_query
+
+
+def test_normalize_food_query_strips_measure_and_packaging_noise():
+    # noise (quantity, unit, packaging, parentheticals) is removed so the key is the food noun
+    assert _normalize_food_query("(16 oz.) can tomatoes") == "tomatoes"
+    assert _normalize_food_query("c. Bisquick") == "bisquick"
+    assert _normalize_food_query("- 12 oz. can beer") == "beer"
+    assert _normalize_food_query("c. black olives (optional)") == "black olives"
+    # real food words are kept, so distinct foods stay distinct
+    assert _normalize_food_query("boneless chicken breasts") == "boneless chicken breasts"
+
+
+def test_normalize_food_query_collapses_variants_to_one_cache_key():
+    # the whole point: differently-worded lines for the same food collapse to one key (cache hits)
+    assert (
+        _normalize_food_query("(16 oz.) can tomatoes")
+        == _normalize_food_query("2 16-oz cans tomatoes")
+        == "tomatoes"
+    )
 
 
 def _recipes(n: int) -> list[RawRecipe]:
@@ -33,10 +55,17 @@ class _CmGraph:
     def __exit__(self, *exc: object) -> bool:
         return False
 
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        yield   # writes are captured immediately; batching is a perf optimization, not behavior
+
     def run(self, cypher: str, **params: Any) -> list[dict[str, Any]]:
         if "queryNodes" in cypher:
             return [{"fdc_id": "170026", "description": "Potatoes",
                      "data_type": "sr_legacy_food", "score": 5.0}]
+        if "HAS_NUTRIENT_RAW" in cypher and "AS vector" in cypher:    # read_all_raw_vectors (preload)
+            return [{"fdc_id": "170026",
+                     "vector": [{"nutrient_id": "potassium", "amount": 425.0}]}]
         if "HAS_NUTRIENT_RAW" in cypher and "RETURN n.nutrient_id" in cypher:
             return [{"nutrient_id": "potassium", "amount": 425.0}]
         return []

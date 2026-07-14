@@ -10,6 +10,8 @@ See ../../docs/PDD.md Section 2 (environment and commands) and ../../CLAUDE.md i
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Mapping
@@ -27,6 +29,10 @@ class GraphClient:
     def __init__(self, driver: Driver, *, database: str | None = None) -> None:
         self._driver = driver
         self._database = database
+        # When inside a `batch()` context, `run_write` appends here instead of committing, so a whole
+        # unit of work (e.g. one recipe's writes) commits in a single transaction. None means writes
+        # commit immediately (one transaction each), the default everywhere except batched ingest.
+        self._batch: list[tuple[str, Mapping[str, Any]]] | None = None
 
     @classmethod
     def from_env(cls) -> GraphClient:
@@ -49,7 +55,12 @@ class GraphClient:
 
     def run_write(self, cypher: str, params: Mapping[str, Any]) -> list[dict[str, Any]]:
         """Execute one parameterized Cypher statement inside an explicit write transaction.
-        Used by graph/writers.py so every write is atomic per statement."""
+        Used by graph/writers.py so every write is atomic per statement. Inside a `batch()` context
+        the statement is buffered and committed with the rest of the batch instead; buffered writes
+        return no rows (ingest writers do not read their results)."""
+        if self._batch is not None:
+            self._batch.append((cypher, params))
+            return []
 
         def _work(tx: Any) -> list[dict[str, Any]]:
             result = tx.run(cypher, dict(params))
@@ -57,6 +68,34 @@ class GraphClient:
 
         with self._driver.session(database=self._database) as session:
             return session.execute_write(_work)
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        """Buffer every `run_write` in the block and commit them in ONE transaction on exit.
+
+        At corpus scale the per-recipe write set is ~dozens of statements; committing each in its own
+        transaction makes the fsync-per-commit the throughput ceiling. Grouping a recipe's writes
+        into a single transaction amortizes that commit and is the main ingest speedup. Statements
+        run in the order buffered, so intra-recipe dependencies (a variant merged before its
+        HAS_NUTRIENT edges) hold. Not nestable. Reads (`run`) are unaffected and still execute live.
+        """
+        if self._batch is not None:
+            raise RuntimeError("GraphClient.batch() is not re-entrant")
+        buffer: list[tuple[str, Mapping[str, Any]]] = []
+        self._batch = buffer
+        try:
+            yield
+        finally:
+            self._batch = None
+        if not buffer:
+            return
+
+        def _work(tx: Any) -> None:
+            for cypher, params in buffer:
+                tx.run(cypher, dict(params))
+
+        with self._driver.session(database=self._database) as session:
+            session.execute_write(_work)
 
     def apply_schema(self, ddl_path: Path) -> None:
         """Apply the contract DDL at `ddl_path` idempotently. The file is a `;`-separated list of
