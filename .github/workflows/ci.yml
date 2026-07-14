@@ -16,8 +16,8 @@ jobs:
       matrix:
         package: [nutriscrape, nectar]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install toolchain and packages
@@ -40,8 +40,8 @@ jobs:
       # The runner is ephemeral, so skip testcontainers' Ryuk reaper to avoid its socket-mount quirks.
       TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install toolchain, packages, and testcontainers
