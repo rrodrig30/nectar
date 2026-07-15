@@ -25,6 +25,34 @@ from nutriscrape.extraction.preparation import ParsedPreparation, resolve_liquid
 # parse over well-formed lines is reliable but lower-fidelity than a trained model's judgment.
 _BASIC_PARSE_CONFIDENCE = 0.6
 
+_MEASURE_PACKAGING = frozenset({
+    "oz", "ounce", "ounces", "lb", "lbs", "pound", "pounds", "g", "kg", "mg", "ml", "l",
+    "c", "cup", "cups", "tsp", "teaspoon", "teaspoons", "tbsp", "tablespoon", "tablespoons",
+    "can", "cans", "pkg", "pkgs", "package", "packages", "jar", "jars", "bottle", "bottles",
+    "box", "boxes", "bag", "bags", "stick", "sticks", "pint", "pints", "quart", "quarts",
+    "gallon", "gallons", "dash", "pinch", "container", "containers", "carton", "cartons",
+    "small", "medium", "large",
+})
+_QTY_TOKEN = re.compile(r"^[0-9]+([/.\-][0-9]+)*$")   # 12, 1/2, 3.5, "9" in 9-inch
+
+
+def normalize_food_query(food: str) -> str:
+    """Reduce a raw ingredient food string to its core food words for resolution and cache keying.
+
+    The heuristic parser leaves quantity, unit and packaging noise on the food field
+    ("(16 oz.) can tomatoes", "c. Bisquick"), which matches FDC poorly and makes every string
+    unique so a resolution cache never hits. Dropping parenthetical groups, punctuation,
+    pure-number tokens and measure/packaging words collapses these to the food noun ("tomatoes",
+    "bisquick"). Shapes only the lookup key; never a stored value or a nutrient number.
+    """
+    text = re.sub(r"\([^)]*\)", " ", food).lower()          # drop parenthetical groups
+    text = re.sub(r"[^a-z0-9/ ]+", " ", text)               # punctuation -> space
+    tokens = [
+        tok for tok in text.split()
+        if tok not in _MEASURE_PACKAGING and not _QTY_TOKEN.match(tok)
+    ]
+    return " ".join(tokens).strip()
+
 _UNICODE_FRACTIONS: dict[str, float] = {
     "¼": 0.25, "½": 0.5, "¾": 0.75,
     "⅓": 1.0 / 3.0, "⅔": 2.0 / 3.0,

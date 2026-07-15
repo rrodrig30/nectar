@@ -145,6 +145,7 @@ CREATE CONSTRAINT food_id     IF NOT EXISTS FOR (f:Food)         REQUIRE f.fdc_i
 CREATE CONSTRAINT nutrient_id IF NOT EXISTS FOR (n:Nutrient)     REQUIRE n.nutrient_id IS UNIQUE;
 CREATE CONSTRAINT compound_id IF NOT EXISTS FOR (c:Compound)     REQUIRE c.compound_id IS UNIQUE;
 CREATE CONSTRAINT rule_id     IF NOT EXISTS FOR (dr:DietaryRule) REQUIRE dr.rule_id IS UNIQUE;
+CREATE CONSTRAINT prep_id     IF NOT EXISTS FOR (p:Preparation)  REQUIRE p.prep_id IS UNIQUE;
 
 // range indexes for Stage 1 hard filters and Stage 2 scoring
 CREATE INDEX variant_glycemic IF NOT EXISTS FOR (v:RecipeVariant) ON (v.glycemic_load);

@@ -5,7 +5,7 @@ from typing import Any
 
 from nutriscrape import pipeline
 from nutriscrape.acquisition.adapters.base import RawRecipe
-from nutriscrape.pipeline import _normalize_food_query
+from nutriscrape.acquisition.parse import normalize_food_query as _normalize_food_query
 
 
 def test_normalize_food_query_strips_measure_and_packaging_noise():

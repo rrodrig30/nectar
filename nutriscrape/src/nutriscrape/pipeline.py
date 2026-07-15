@@ -43,7 +43,6 @@ from __future__ import annotations
 import logging
 import math
 import os
-import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,7 +54,11 @@ from nutriscrape.clustering.resolve import Judge, cluster as cluster_fingerprint
 from nutriscrape.acquisition.adapters.base import RawRecipe
 from nutriscrape.acquisition.adapters.datasets import RecipeNlgAdapter
 from nutriscrape.acquisition.adapters.structured import SchemaOrgAdapter
-from nutriscrape.acquisition.parse import basic_preparation, parse_ingredient_basic
+from nutriscrape.acquisition.parse import (
+    basic_preparation,
+    normalize_food_query,
+    parse_ingredient_basic,
+)
 from nutriscrape.common import confidence
 from nutriscrape.common.config import default_config_dir, load_config
 from nutriscrape.common.provenance import make_provenance
@@ -293,6 +296,32 @@ def run_fdc_import() -> None:
         return
     with GraphClient.from_env() as client:
         _import_fdc_bulk(csv_dir, client)
+
+
+# ------------------------------------------------------------------------------ bulk-load path
+
+
+def run_bulk_export() -> None:
+    """Compute cooked nutrition for the whole corpus in memory and write node/relationship CSVs for
+    `bulk-load`. Resolves against an in-memory FDC index (no Neo4j), so it is the corpus-scale
+    replacement for the transactional `ingest` stage. Needs FDC_BULK_DIR; writes to BULK_OUT_DIR
+    (default /import, Neo4j's import directory). Corpus is NUTRISCRAPE_CORPUS or the bundled sample."""
+    fdc_dir = os.environ.get("FDC_BULK_DIR")
+    if not fdc_dir:
+        logger.warning("bulk-export: FDC_BULK_DIR is not set; nothing to resolve against. Skipping.")
+        return
+    from nutriscrape.bulk.export import run_bulk_export as _export
+
+    _export(_sample_corpus_path(), fdc_dir, os.environ.get("BULK_OUT_DIR", "/import"))
+
+
+def run_bulk_load() -> None:
+    """LOAD CSV the exported CSVs (in Neo4j's import dir) into the graph, single-threaded so the
+    shared :Nutrient/:Food nodes never see concurrent writers. Run after fdc-import + knowledge."""
+    from nutriscrape.bulk.load import run_bulk_load as _load
+
+    with GraphClient.from_env() as client:
+        _load(client)
 
 
 # ---------------------------------------------------------------------------------------- ingest
@@ -572,36 +601,6 @@ def _api_ingest_deps(fdc_client: FdcClient) -> IngestDeps:
     )
 
 
-_MEASURE_PACKAGING = frozenset({
-    "oz", "ounce", "ounces", "lb", "lbs", "pound", "pounds", "g", "kg", "mg", "ml", "l",
-    "c", "cup", "cups", "tsp", "teaspoon", "teaspoons", "tbsp", "tablespoon", "tablespoons",
-    "can", "cans", "pkg", "pkgs", "package", "packages", "jar", "jars", "bottle", "bottles",
-    "box", "boxes", "bag", "bags", "stick", "sticks", "pint", "pints", "quart", "quarts",
-    "gallon", "gallons", "dash", "pinch", "container", "containers", "carton", "cartons",
-    "small", "medium", "large",
-})
-_QTY_TOKEN = re.compile(r"^[0-9]+([/.\-][0-9]+)*$")   # 12, 1/2, 3.5, 9-inch's "9"
-
-
-def _normalize_food_query(food: str) -> str:
-    """Reduce a raw ingredient food string to its core food words for local resolution.
-
-    The heuristic ingredient parser leaves quantity, unit and packaging noise on the food field
-    ("(16 oz.) can tomatoes", "c. Bisquick"), which both matches FDC poorly and makes every string
-    unique so the resolution cache never hits. Dropping parentheticals, punctuation, pure-number
-    tokens and measure/packaging words collapses these to the food noun ("tomatoes", "bisquick"),
-    which resolves better and recurs across recipes so the cache actually pays off. This shapes only
-    the lookup key, never a stored value or a nutrient number.
-    """
-    text = re.sub(r"\([^)]*\)", " ", food).lower()          # drop parenthetical groups
-    text = re.sub(r"[^a-z0-9/ ]+", " ", text)               # punctuation -> space
-    tokens = [
-        tok for tok in text.split()
-        if tok not in _MEASURE_PACKAGING and not _QTY_TOKEN.match(tok)
-    ]
-    return " ".join(tokens).strip()
-
-
 def _local_resolver(client: GraphClient) -> Callable[[str], ResolvedFood | None]:
     """Resolve a food string against the local :Food graph (bulk-imported) via the full-text index,
     ranked by the same matcher the API path uses. No FDC API call.
@@ -612,7 +611,7 @@ def _local_resolver(client: GraphClient) -> Callable[[str], ResolvedFood | None]
     cache: dict[str, ResolvedFood | None] = {}
 
     def resolve(food_str: str) -> ResolvedFood | None:
-        key = _normalize_food_query(food_str) or food_str.strip().lower()
+        key = normalize_food_query(food_str) or food_str.strip().lower()
         if key in cache:
             return cache[key]
         best = best_match(key, search_foods(client, key))

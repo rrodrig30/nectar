@@ -13,7 +13,8 @@ from nutriscrape import pipeline
 from nutriscrape.common.config import load_env_file
 
 STAGES = (
-    "schema", "knowledge", "fdc-import", "ingest", "cluster", "materialize", "run-all", "flow",
+    "schema", "knowledge", "fdc-import", "ingest", "bulk-export", "bulk-load",
+    "cluster", "materialize", "run-all", "flow",
 )
 
 # Stage name -> the pipeline function that implements it. `run-all` is not a key here; it is the
@@ -23,6 +24,8 @@ _STAGE_TO_FUNC_NAME: dict[str, str] = {
     "knowledge": "run_knowledge",
     "fdc-import": "run_fdc_import",
     "ingest": "run_ingest",
+    "bulk-export": "run_bulk_export",
+    "bulk-load": "run_bulk_load",
     "cluster": "run_cluster",
     "materialize": "run_materialize",
 }
