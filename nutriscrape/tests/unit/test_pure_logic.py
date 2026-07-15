@@ -75,3 +75,13 @@ def test_clustering_favors_finer_split_without_judge():
     assert ["c"] in members                            # the distinct version stayed its own dish
     # membership confidence recorded for every member
     assert all(0.0 <= v <= 1.0 for c in clusters for v in c.membership_confidence.values())
+
+
+def test_clustering_bounds_oversized_identical_core_block():
+    # Many recipes with identical core foods must not blow up O(n^2): with a small max_block the
+    # block is scored in windows, still returns every recipe in some cluster, and never hangs.
+    recipes = [RecipeInput(str(i), {"potato": 300.0, "butter": 20.0}, "boil") for i in range(50)]
+    fps = [fingerprint(r) for r in recipes]
+    clusters = cluster(fps, judge=None, max_block=10)   # forces windowing (50 > 10, identical cores)
+    covered = {rid for c in clusters for rid in c.members}
+    assert covered == {str(i) for i in range(50)}       # every recipe still placed, none dropped

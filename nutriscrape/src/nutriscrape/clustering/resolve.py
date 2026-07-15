@@ -7,6 +7,7 @@ split: a clinically distinct version stays separate rather than being averaged i
 See SDD Section 5, PDD Section 7.
 """
 from __future__ import annotations
+import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -15,8 +16,16 @@ from nutriscrape.clustering.blocking import block_by_core_signature
 from nutriscrape.clustering.fingerprint import Fingerprint
 from nutriscrape.clustering.score import score
 
+logger = logging.getLogger(__name__)
+
 HIGH = 0.75
 LOW = 0.55
+
+# Within-block scoring is O(n^2). At corpus scale a top-3 signature block for a common food combo
+# (flour/sugar/butter) can hold tens of thousands of recipes, so an uncapped block would run for
+# hours. Above this size a block is sub-blocked by its exact core-food set (a finer key) and, if a
+# sub-block is still larger, scored in windows -- with a logged warning, never a silent cap.
+MAX_BLOCK = 2000
 
 # The LLM boundary: for a near-threshold pair, are these the same dish? Used only for LOW..HIGH.
 Judge = Callable[[Fingerprint, Fingerprint], bool]
@@ -85,9 +94,44 @@ def cluster_block(block: Sequence[Fingerprint], judge: Judge | None = None,
     return clusters
 
 
+def _cluster_bounded(block: Sequence[Fingerprint], judge: Judge | None, high: float, low: float,
+                     max_block: int) -> list[Cluster]:
+    """Cluster one block, keeping the O(n^2) pairwise bounded. Small blocks score in full. A block
+    over `max_block` is sub-blocked by its exact core-food set; a sub-block still over `max_block`
+    (many recipes with identical core foods) is scored in fixed windows, logging that cross-window
+    pairs are not compared -- a bounded, disclosed approximation rather than a silent cap or a hang."""
+    if len(block) <= max_block:
+        return cluster_block(block, judge, high, low)
+
+    finer: dict[frozenset[str], list[Fingerprint]] = defaultdict(list)
+    for fp in block:
+        finer[fp.core_foods].append(fp)
+    if len(finer) > 1:
+        out: list[Cluster] = []
+        for sub in finer.values():
+            out.extend(_cluster_bounded(sub, judge, high, low, max_block))
+        return out
+
+    logger.warning(
+        "cluster: %d recipes share identical core foods; scoring in windows of %d "
+        "(cross-window pairs not compared)", len(block), max_block,
+    )
+    windowed: list[Cluster] = []
+    for start in range(0, len(block), max_block):
+        windowed.extend(cluster_block(block[start:start + max_block], judge, high, low))
+    return windowed
+
+
 def cluster(fingerprints: Sequence[Fingerprint], judge: Judge | None = None,
-            high: float = HIGH, low: float = LOW, top_n: int = 3) -> list[Cluster]:
+            high: float = HIGH, low: float = LOW, top_n: int = 3,
+            max_block: int = MAX_BLOCK) -> list[Cluster]:
+    blocks = block_by_core_signature(fingerprints, top_n)
+    logger.info("cluster: %d recipes in %d blocks; scoring (cap %d/block)",
+                len(fingerprints), len(blocks), max_block)
     clusters: list[Cluster] = []
-    for block in block_by_core_signature(fingerprints, top_n).values():
-        clusters.extend(cluster_block(block, judge, high, low))
+    for i, block in enumerate(blocks.values(), start=1):
+        clusters.extend(_cluster_bounded(block, judge, high, low, max_block))
+        if i % 20_000 == 0:
+            logger.info("cluster: %d/%d blocks scored, %d dishes so far",
+                        i, len(blocks), len(clusters))
     return clusters
