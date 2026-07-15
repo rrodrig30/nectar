@@ -14,7 +14,7 @@ from nutriscrape.common.config import load_env_file
 
 STAGES = (
     "schema", "knowledge", "fdc-import", "ingest", "bulk-export", "bulk-load",
-    "cluster", "materialize", "run-all", "flow",
+    "cluster", "materialize", "dish-stats", "run-all", "flow",
 )
 
 # Stage name -> the pipeline function that implements it. `run-all` is not a key here; it is the
@@ -28,6 +28,7 @@ _STAGE_TO_FUNC_NAME: dict[str, str] = {
     "bulk-load": "run_bulk_load",
     "cluster": "run_cluster",
     "materialize": "run_materialize",
+    "dish-stats": "run_dish_stats",
 }
 
 # fdc-import runs before ingest so ingest can resolve against the local :Food graph rather than the

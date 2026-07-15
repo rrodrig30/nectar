@@ -925,6 +925,16 @@ def _run_dish_stats_with_client(client: GraphClient) -> int:
     return len(by_dish)
 
 
+def run_dish_stats() -> None:
+    """Materialize per-dish nutrient distributions on `:Dish` (contract Section 5) from the variants
+    already in the graph, without the alternative-variant expansion `materialize` also does. Split
+    out because dish statistics read existing data and scale, whereas alternative-variant generation
+    is a heavy write and, at corpus scale, belongs on the bulk path."""
+    logger.info("dish-stats: summarizing nutrient distributions per dish")
+    with GraphClient.from_env() as client:
+        _run_dish_stats_with_client(client)
+
+
 def run_materialize() -> None:
     """Selective alternative-preparation variant materialization plus dish-level statistics. For each
     already-ingested recipe, generate a bounded set of culinarily-valid alternative-method variants
