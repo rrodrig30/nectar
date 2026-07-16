@@ -122,6 +122,38 @@ class ConfirmResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Catalog lookups (common/contract_client.py) - dish discovery and condition list for the UI
+# ---------------------------------------------------------------------------
+
+
+class DishSummaryOut(BaseModel):
+    """One dish-search hit: enough to show and select a dish, not its facts (those come from
+    `/recommend`). `canonical_name` may be null for a dish that has no materialized name."""
+
+    dish_id: str
+    canonical_name: str | None = None
+
+
+class ConditionOut(BaseModel):
+    """One `:Condition` from the knowledge base, for the condition selector."""
+
+    condition_id: str
+    name: str | None = None
+
+
+class GuidelineOut(BaseModel):
+    """One `:Guideline` passage (contract Section 2.2), for the evidence panel. `chunk` is the
+    passage text; it may be null when only the citation stub is loaded (KB curation is a standing
+    effort, so passage text can lag the citation)."""
+
+    guideline_id: str
+    org: str | None = None
+    title: str | None = None
+    year: int | None = None
+    chunk: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Recommendation (engine/*, present/disclaimer.py)
 # ---------------------------------------------------------------------------
 

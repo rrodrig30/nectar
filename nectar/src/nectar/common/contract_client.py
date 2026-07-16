@@ -80,6 +80,19 @@ RETURN v.variant_id AS variant_id,
        head(collect(DISTINCT p.method)) AS method
 """
 
+_SEARCH_DISHES = f"""
+MATCH (d:{DISH})
+WHERE toLower(d.canonical_name) CONTAINS toLower($q)
+RETURN d.dish_id AS dish_id, d.canonical_name AS canonical_name
+LIMIT $limit
+"""
+
+_LIST_CONDITIONS = f"""
+MATCH (c:{CONDITION})
+RETURN c.condition_id AS condition_id, c.name AS name
+ORDER BY c.condition_id
+"""
+
 _CONSTRAINTS_FOR_CONDITION = f"""
 MATCH (:{CONDITION} {{condition_id: $condition_id}})-[:{IMPOSES}]->(r:{DIETARY_RULE})
       -[:{ACTS_ON}]->(n:{NUTRIENT})
@@ -311,6 +324,17 @@ class ContractClient:
                 )
             )
         return facts
+
+    def search_dishes(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
+        """Dishes whose canonical_name contains `query` (case-insensitive), for the clinician's
+        dish-picker. Read-only, bounded by `limit`; `LIMIT` lets the scan terminate early rather
+        than sorting the whole corpus. Returns `{dish_id, canonical_name}` rows."""
+        return self._read(_SEARCH_DISHES, q=query, limit=limit)
+
+    def list_conditions(self) -> list[dict[str, Any]]:
+        """All `:Condition` nodes in the knowledge base (`{condition_id, name}`), so the UI can
+        offer a real condition selector rather than free-text ids."""
+        return self._read(_LIST_CONDITIONS)
 
     def dish_nutrient_stats(self, dish_id: str) -> dict[str, DishNutrientStat]:
         """Per-nutrient distribution statistics across a Dish's versions (contract Section 5), keyed
