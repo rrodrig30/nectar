@@ -108,7 +108,12 @@ from nutriscrape.knowledge.loaders import (
     load_rules,
     load_transforms,
 )
-from nutriscrape.nutrition.compose import IngredientFacts, compose_serving_vector
+from nutriscrape.nutrition.compose import (
+    IngredientFacts,
+    compose_serving_vector,
+    is_cooking_liquid,
+    serving_facts,
+)
 from nutriscrape.nutrition.distribution import distribution
 from nutriscrape.nutrition.measures import resolve_mass_g_default
 from nutriscrape.nutrition.transform import Preparation
@@ -525,6 +530,7 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
                 mass_g=mass_g,
                 prep=prep,
                 raw_per_100g=raw_per_100g,
+                is_liquid=is_cooking_liquid(resolved.description),
             )
         )
 
@@ -537,10 +543,17 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
         return
 
     cooked = compose_serving_vector(facts, deps.transforms, raw.servings)
+    facts_out = serving_facts(facts, cooked, raw.servings)
     variant_id = f"{raw.recipe_id}:variant:0:as_authored"
     variant_confidence = confidence.propagate(nutrient.confidence for nutrient in cooked.values())
     merge_recipe_variant(
-        client, variant_id=variant_id, is_as_authored=True, confidence=variant_confidence
+        client,
+        variant_id=variant_id,
+        is_as_authored=True,
+        confidence=variant_confidence,
+        serving_mass_g=facts_out.serving_mass_g,
+        energy_kcal=facts_out.energy_kcal,
+        fluid_ml=facts_out.fluid_ml,
     )
     link_recipe_variant(client, recipe_id=raw.recipe_id, variant_id=variant_id)
     for nutrient_id, nutrient in cooked.items():
@@ -846,6 +859,7 @@ def _facts_under_method(ingredient: MaterializeIngredient, method: str) -> Ingre
         mass_g=ingredient.mass_g,
         prep=prep,
         raw_per_100g=ingredient.raw_per_100g,
+        is_liquid=is_cooking_liquid(ingredient.description),
     )
 
 
@@ -866,12 +880,19 @@ def _materialize_variants_for_recipe(
         cooked = compose_serving_vector(facts, transforms, recipe.servings)
         if not cooked:
             continue
+        facts_out = serving_facts(facts, cooked, recipe.servings)
         variant_id = f"{recipe.recipe_id}:variant:{method}"
         variant_confidence = confidence.propagate(
             nutrient.confidence for nutrient in cooked.values()
         )
         merge_recipe_variant(
-            client, variant_id=variant_id, is_as_authored=False, confidence=variant_confidence
+            client,
+            variant_id=variant_id,
+            is_as_authored=False,
+            confidence=variant_confidence,
+            serving_mass_g=facts_out.serving_mass_g,
+            energy_kcal=facts_out.energy_kcal,
+            fluid_ml=facts_out.fluid_ml,
         )
         link_recipe_variant(client, recipe_id=recipe.recipe_id, variant_id=variant_id)
         for nutrient_id, nutrient in cooked.items():
