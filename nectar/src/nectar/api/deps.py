@@ -17,8 +17,9 @@ from typing import Literal
 
 from fastapi import Depends, Header, HTTPException
 
-from nectar.common.config import Settings, load_settings
+from nectar.common.config import Settings
 from nectar.common.contract_client import ContractClient
+from nectar.common.runtime_settings import effective_settings
 from nectar.llm.backends import LLMBackend, make_backend
 
 # ---------------------------------------------------------------------------
@@ -26,16 +27,12 @@ from nectar.llm.backends import LLMBackend, make_backend
 # ---------------------------------------------------------------------------
 
 
-@lru_cache(maxsize=1)
-def _settings_singleton() -> Settings:
-    return load_settings()
-
-
 def get_settings() -> Settings:
-    """NECTAR runtime configuration (LLM backend choice, hyperparameters, display defaults).
-    Never a clinical threshold; those come from the contract knowledge base and the derivation
-    config (config/equations.yaml, config/conditions/), not through this dependency."""
-    return _settings_singleton()
+    """NECTAR runtime configuration (LLM backend choice, hyperparameters, display defaults),
+    including any operator overrides applied at runtime via `PUT /settings`. Recomputed per call so
+    a settings change takes effect on the next request. Never a clinical threshold; those come from
+    the contract knowledge base and the derivation config, not through this dependency."""
+    return effective_settings()
 
 
 # ---------------------------------------------------------------------------

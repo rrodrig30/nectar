@@ -122,6 +122,40 @@ class ConfirmResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Runtime settings (common/runtime_settings.py) - the operator model/display surface
+# ---------------------------------------------------------------------------
+
+
+class SettingsOut(BaseModel):
+    """The effective NECTAR runtime settings (config defaults + operator overrides). Never carries
+    an API key (that is an environment secret) or any clinical threshold."""
+
+    backend: str
+    base_url: str
+    generation_model: str
+    temperature: float
+    context_window: int
+    embedding_model: str
+    unit_system: str
+    temp_scale: str
+    overridden: list[str] = Field(default_factory=list)
+
+
+class SettingsUpdate(BaseModel):
+    """A partial settings change from the operator. Only the set fields are applied; validation of
+    the resulting settings (backend, unit system, temperature type) happens on apply."""
+
+    backend: Literal["ollama", "anthropic", "openai"] | None = None
+    base_url: str | None = None
+    generation_model: str | None = None
+    temperature: float | None = None
+    context_window: int | None = None
+    embedding_model: str | None = None
+    unit_system: Literal["us", "metric"] | None = None
+    temp_scale: Literal["F", "C"] | None = None
+
+
+# ---------------------------------------------------------------------------
 # Catalog lookups (common/contract_client.py) - dish discovery and condition list for the UI
 # ---------------------------------------------------------------------------
 
