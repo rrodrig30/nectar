@@ -20,6 +20,14 @@ from typing import Sequence
 from nutriscrape.common.units import is_mass_unit, is_volume_unit
 from nutriscrape.extraction.ingredients import ParsedIngredient
 from nutriscrape.extraction.preparation import ParsedPreparation, resolve_liquid_retained
+from nutriscrape.nutrition.compose import is_cooking_liquid
+
+_DRAIN_WORDS: tuple[str, ...] = ("drain", "strain")
+
+
+def _is_drain_step(step_text: str) -> bool:
+    lowered = step_text.lower()
+    return any(word in lowered for word in _DRAIN_WORDS)
 
 # Deliberately conservative: unresolved model touch would score higher confidence. A regex/keyword
 # parse over well-formed lines is reliable but lower-fidelity than a trained model's judgment.
@@ -224,6 +232,15 @@ def basic_preparation(
         if not applies_to and method is not None and referenced:
             applies_to = list(referenced)
             carryover = True
+
+        # A drain/strain step discards the cooking liquid, so it also drains any cooking-liquid
+        # ingredient already in the pot (water, broth) even though it names only the food
+        # ("Drain the potatoes"). Those liquids then take this step's liquid_retained_frac (0.0),
+        # so they leave the as-eaten dish - the serving mass and fluid exclude the drained water.
+        if not carryover and applies_to and _is_drain_step(step_text):
+            for ref in referenced:
+                if ref not in applies_to and is_cooking_liquid(ref):
+                    applies_to.append(ref)
 
         if not applies_to:
             continue

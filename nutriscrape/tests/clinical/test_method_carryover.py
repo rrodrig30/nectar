@@ -51,3 +51,15 @@ def test_bare_method_with_no_prior_ingredient_is_ignored():
     # "Boil" has nothing to attach to.
     preps = basic_preparation(["Boil some water."], ["potatoes", "salt"])
     assert all("potatoes" not in p.applies_to for p in preps)
+
+
+def test_drain_step_also_drains_the_cooking_water():
+    steps = [
+        "Place the cubed potatoes in a pot with 4 cups water.",
+        "Boil for 15 minutes.",
+        "Drain the potatoes well.",
+    ]
+    preps = basic_preparation(steps, ["potatoes", "water"])
+    assert _prep_for(preps, "potatoes").liquid_retained_frac == 0.0
+    # the cooking water is drained too, even though the step names only the potatoes
+    assert _prep_for(preps, "water").liquid_retained_frac == 0.0
