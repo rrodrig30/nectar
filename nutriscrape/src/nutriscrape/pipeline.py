@@ -376,11 +376,15 @@ def _sample_corpus_path() -> str:
     )
 
 
-def _acquire(corpus_path: str) -> list[RawRecipe]:
+def _acquire(corpus_path: str, source_id: str = "recipenlg") -> list[RawRecipe]:
     """Acquire raw recipes from the corpus path, choosing the adapter by extension: a `.csv` is a
     RecipeNLG-style dataset dump (`RecipeNlgAdapter`); a `.txt`/`.urls` file is a newline list of
     recipe URLs scraped from their published schema.org data (`SchemaOrgAdapter`, needs
-    recipe-scrapers and network). Lines starting with `#` in a URL file are treated as comments."""
+    recipe-scrapers and network). Lines starting with `#` in a URL file are treated as comments.
+
+    `source_id` is the id namespace for a CSV dataset; the caller passes a distinct one for a
+    non-canonical corpus (the bundled sample) so its row-index ids never collide with the real
+    RecipeNLG export's `recipenlg:N`."""
     if corpus_path.endswith((".txt", ".urls")):
         lines = Path(corpus_path).read_text(encoding="utf-8").splitlines()
         urls = [
@@ -390,7 +394,7 @@ def _acquire(corpus_path: str) -> list[RawRecipe]:
             if stripped and not stripped.startswith("#")
         ]
         return list(SchemaOrgAdapter(urls).recipes())
-    return list(RecipeNlgAdapter(corpus_path).recipes())
+    return list(RecipeNlgAdapter(corpus_path, source_id=source_id).recipes())
 
 
 def _load_nutrient_vocab() -> dict[str, tuple[str, str]]:
@@ -658,8 +662,14 @@ def run_ingest() -> None:
     and network.
     """
     corpus = _sample_corpus_path()
-    logger.info("ingest: reading recipe corpus from %s", corpus)
-    raw_recipes = _acquire(corpus)
+    # A real RecipeNLG export (NUTRISCRAPE_CORPUS) keeps its canonical `recipenlg:N` ids; the
+    # bundled demo corpus gets its own `sample:N` namespace so re-ingesting it never overwrites
+    # real corpus recipes that share a row index. Overridable via NUTRISCRAPE_SOURCE_ID.
+    source_id = os.environ.get("NUTRISCRAPE_SOURCE_ID") or (
+        "recipenlg" if os.environ.get("NUTRISCRAPE_CORPUS") else "sample"
+    )
+    logger.info("ingest: reading recipe corpus from %s (source_id=%s)", corpus, source_id)
+    raw_recipes = _acquire(corpus, source_id=source_id)
     if not raw_recipes:
         logger.warning("ingest: no recipes found in %s; nothing to ingest", corpus)
         return

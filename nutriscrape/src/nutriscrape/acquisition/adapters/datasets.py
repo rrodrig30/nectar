@@ -62,8 +62,13 @@ class RecipeNlgAdapter:
     `directions` yields an empty tuple for that field rather than failing the whole read.
     """
 
-    def __init__(self, csv_path: str | Path) -> None:
+    def __init__(self, csv_path: str | Path, source_id: str = _SOURCE_ID) -> None:
         self._csv_path = Path(csv_path)
+        # The id namespace. recipe_id is `{source_id}:{row_index}`, so two different corpora read
+        # with the same source_id collide on row index. The full RecipeNLG export keeps the default
+        # ("recipenlg", its canonical numbering); any other corpus (the bundled sample, a second
+        # dataset) MUST pass a distinct source_id or it overwrites real recipes.
+        self._source_id = source_id
 
     def recipes(self) -> Iterator[RawRecipe]:
         with self._csv_path.open("r", encoding="utf-8", newline="") as handle:
@@ -73,9 +78,9 @@ class RecipeNlgAdapter:
                 if not title:
                     continue
                 yield RawRecipe(
-                    recipe_id=f"{_SOURCE_ID}:{index}",
+                    recipe_id=f"{self._source_id}:{index}",
                     title=title,
-                    source_id=_SOURCE_ID,
+                    source_id=self._source_id,
                     license=_LICENSE,
                     servings=_coerce_servings(row.get("servings")),
                     ingredient_lines=_coerce_string_list(row.get("ingredients") or ""),

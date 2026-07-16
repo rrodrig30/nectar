@@ -23,6 +23,16 @@ def test_sample_csv_exists():
     assert SAMPLE_CSV.is_file()
 
 
+def test_source_id_namespaces_recipe_ids():
+    # A distinct source_id keeps a non-canonical corpus (the bundled sample) from colliding with
+    # the real RecipeNLG export's `recipenlg:N` ids (which are row-index based).
+    default_ids = {r.recipe_id for r in RecipeNlgAdapter(SAMPLE_CSV).recipes()}
+    sample_ids = {r.recipe_id for r in RecipeNlgAdapter(SAMPLE_CSV, source_id="sample").recipes()}
+    assert all(rid.startswith("recipenlg:") for rid in default_ids)
+    assert all(rid.startswith("sample:") for rid in sample_ids)
+    assert default_ids.isdisjoint(sample_ids)  # no id shared between the two namespaces
+
+
 def test_adapter_yields_all_sample_recipes():
     recipes = list(RecipeNlgAdapter(SAMPLE_CSV).recipes())
     assert 6 <= len(recipes) <= 8
