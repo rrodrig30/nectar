@@ -207,19 +207,44 @@ def basic_preparation(
     (method, cut_class, time_min) do not erase a value already established by an earlier step.
     """
     by_ingredient: dict[str, ParsedPreparation] = {}
+    referenced: list[str] = []  # ingredients named by earlier steps, in order (the "pot contents")
 
     for step_text in steps:
         applies_to = _match_applies_to(step_text, ingredient_refs)
-        if not applies_to:
-            continue
-
         method = _detect_method(step_text)
         cut_class = _detect_cut_class(step_text)
         time_min = _detect_time_min(step_text)
-        liquid_retained_frac = resolve_liquid_retained(step_text)
+
+        # A cooking-method step that names no ingredient ("Boil for 15 minutes") acts on whatever
+        # is already in the pot: the ingredients earlier steps referenced. Without this the method
+        # is lost (it lives in a step that does not repeat the food name), so no transform fires.
+        # This fill NEVER changes liquid_retained_frac, so the drain/no-drain linkage, which comes
+        # only from steps that name the food, is untouched.
+        carryover = False
+        if not applies_to and method is not None and referenced:
+            applies_to = list(referenced)
+            carryover = True
+
+        if not applies_to:
+            continue
 
         for ref in applies_to:
             existing = by_ingredient.get(ref)
+            if carryover:
+                if existing is None:
+                    continue
+                by_ingredient[ref] = ParsedPreparation(
+                    method=existing.method if existing.method != "unknown" else (method or "unknown"),
+                    cut_class=existing.cut_class if existing.cut_class is not None else cut_class,
+                    water_ratio=existing.water_ratio,
+                    liquid_retained_frac=existing.liquid_retained_frac,  # drain linkage preserved
+                    time_min=existing.time_min if existing.time_min is not None else time_min,
+                    temp_c=existing.temp_c,
+                    applies_to=[ref],
+                    parse_confidence=existing.parse_confidence,
+                )
+                continue
+            liquid_retained_frac = resolve_liquid_retained(step_text)
             by_ingredient[ref] = ParsedPreparation(
                 method=method or (existing.method if existing else "unknown"),
                 cut_class=cut_class if cut_class is not None else (
@@ -234,6 +259,10 @@ def basic_preparation(
                 applies_to=[ref],
                 parse_confidence=_BASIC_PARSE_CONFIDENCE,
             )
+
+        for ref in applies_to:
+            if ref not in referenced:
+                referenced.append(ref)
 
     return list(by_ingredient.values())
 
