@@ -1,0 +1,35 @@
+# Mineral leaching on wet cooking, seeded from USDA Nutrient Retention Factors (Release 6).
+#
+# Water-soluble minerals partition into the cooking medium; they are recovered if the liquid is
+# kept (soup) and lost if it is drained. The transform model is
+#   effective = raw * D * (1 - L * (1 - kept_liquid))
+# so for a fully drained dish (kept_liquid = 0) retention approx (1 - L). L_base here is therefore
+# roughly (1 - USDA retention factor) for the drained case; geometry (cut) and time/temp scale it
+# further in nutrition/transform.py. These are the clinically load-bearing minerals for renal diets
+# (potassium, phosphorus, magnesium) plus calcium and iron.
+#
+# ILLUSTRATIVE, USDA-seeded; confidence reflects that geometry-resolved values are estimates.
+# Evidence tier A where the retention factor is a measured USDA value, B where interpolated.
+transforms:
+  # --- Potassium (the renal headline): boil ---
+  - {food_class: leafy_green,     method: boil, target: potassium, channel: leaching, L_base: 0.35, mechanism: "K+ leaches into cooking water", source: retn06, confidence: 0.5, evidence_tier: A}
+  - {food_class: other_vegetable, method: boil, target: potassium, channel: leaching, L_base: 0.30, mechanism: "K+ leaches into cooking water", source: retn06, confidence: 0.5, evidence_tier: A}
+  - {food_class: legume,          method: boil, target: potassium, channel: leaching, L_base: 0.20, mechanism: "K+ leaches; dense matrix retains more", source: retn06, confidence: 0.45, evidence_tier: B}
+  - {food_class: starch,          method: boil, target: potassium, channel: leaching, L_base: 0.25, mechanism: "K+ leaches into cooking water", source: retn06, confidence: 0.45, evidence_tier: B}
+  # --- Potassium: steam (less water contact, less loss) ---
+  - {food_class: root_vegetable,  method: steam, target: potassium, channel: leaching, L_base: 0.12, mechanism: "limited K+ loss without immersion", source: retn06, confidence: 0.45, evidence_tier: B}
+  - {food_class: leafy_green,     method: steam, target: potassium, channel: leaching, L_base: 0.15, mechanism: "limited K+ loss without immersion", source: retn06, confidence: 0.45, evidence_tier: B}
+  - {food_class: other_vegetable, method: steam, target: potassium, channel: leaching, L_base: 0.12, mechanism: "limited K+ loss without immersion", source: retn06, confidence: 0.45, evidence_tier: B}
+  # --- Phosphorus (renal): boil ---
+  - {food_class: root_vegetable,  method: boil, target: phosphorus, channel: leaching, L_base: 0.20, mechanism: "phosphate leaches into cooking water", source: retn06, confidence: 0.45, evidence_tier: B}
+  - {food_class: leafy_green,     method: boil, target: phosphorus, channel: leaching, L_base: 0.25, mechanism: "phosphate leaches into cooking water", source: retn06, confidence: 0.45, evidence_tier: B}
+  - {food_class: other_vegetable, method: boil, target: phosphorus, channel: leaching, L_base: 0.20, mechanism: "phosphate leaches into cooking water", source: retn06, confidence: 0.45, evidence_tier: B}
+  - {food_class: legume,          method: boil, target: phosphorus, channel: leaching, L_base: 0.15, mechanism: "phosphate leaches; dense matrix retains more", source: retn06, confidence: 0.4, evidence_tier: B}
+  # --- Magnesium (renal): boil ---
+  - {food_class: root_vegetable,  method: boil, target: magnesium, channel: leaching, L_base: 0.20, mechanism: "Mg2+ leaches into cooking water", source: retn06, confidence: 0.45, evidence_tier: B}
+  - {food_class: leafy_green,     method: boil, target: magnesium, channel: leaching, L_base: 0.25, mechanism: "Mg2+ leaches into cooking water", source: retn06, confidence: 0.45, evidence_tier: B}
+  - {food_class: other_vegetable, method: boil, target: magnesium, channel: leaching, L_base: 0.20, mechanism: "Mg2+ leaches into cooking water", source: retn06, confidence: 0.45, evidence_tier: B}
+  # --- Calcium and iron: boil (smaller loss) ---
+  - {food_class: leafy_green,     method: boil, target: calcium, channel: leaching, L_base: 0.15, mechanism: "some calcium leaches into cooking water", source: retn06, confidence: 0.4, evidence_tier: B}
+  - {food_class: root_vegetable,  method: boil, target: calcium, channel: leaching, L_base: 0.10, mechanism: "some calcium leaches into cooking water", source: retn06, confidence: 0.4, evidence_tier: B}
+  - {food_class: leafy_green,     method: boil, target: iron, channel: leaching, L_base: 0.15, mechanism: "some iron leaches into cooking water", source: retn06, confidence: 0.4, evidence_tier: B}
