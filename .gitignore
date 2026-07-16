@@ -23,6 +23,9 @@ htmlcov/
 *.env
 !*.env.example
 
+# Host/deploy secret provisioning (reads the password from .env/env/prompt; not app code)
+deploy/scripts/provision-secrets.sh
+
 # Runtime artifacts from start.sh
 .nectar-api.log
 .nectar-api.pid
