@@ -90,6 +90,7 @@ from nutriscrape.graph.writers import (
     merge_medication,
     merge_nutrient,
     merge_preparation,
+    clear_recipe_composition,
     merge_recipe,
     merge_recipe_variant,
     write_contains,
@@ -444,6 +445,9 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
         servings=raw.servings,
         confidence=recipe_confidence,
     )
+    # Idempotent re-ingest: drop this recipe's prior CONTAINS edges and variants before rewriting,
+    # so a changed food resolution cannot leave a stale ingredient behind (SDD Section 9).
+    clear_recipe_composition(client, recipe_id=raw.recipe_id)
 
     facts: list[IngredientFacts] = []
     for ingredient in ingredients:

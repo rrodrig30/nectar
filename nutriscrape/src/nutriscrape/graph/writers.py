@@ -226,6 +226,23 @@ def write_contains(
     )
 
 
+def clear_recipe_composition(client: GraphClient, *, recipe_id: str) -> None:
+    """Remove a recipe's prior CONTAINS edges and its RecipeVariant(s) so a re-ingest rewrites the
+    composition cleanly. Without this, re-ingesting a recipe whose food resolution changed leaves a
+    stale CONTAINS edge to the old food (the ingredient is then double-counted); the SDD requires
+    each stage to be idempotent. A first ingest matches nothing and is a no-op. Shared :Food and
+    :Nutrient nodes are never touched, only this recipe's own edges and variants."""
+    cypher = f"""
+    MATCH (r:{names.RECIPE} {{recipe_id: $recipe_id}})
+    OPTIONAL MATCH (r)-[c:{names.CONTAINS}]->()
+    DELETE c
+    WITH DISTINCT r
+    OPTIONAL MATCH (r)-[:{names.HAS_VARIANT}]->(v:{names.RECIPE_VARIANT})
+    DETACH DELETE v
+    """
+    client.run_write(cypher, {"recipe_id": recipe_id})
+
+
 def write_has_nutrient(
     client: GraphClient,
     *,
