@@ -163,3 +163,32 @@ export interface AskResponse {
   free_text: string;
   narration: string;
 }
+
+// --- Runtime settings (common/runtime_settings.py) ---
+
+export type Backend = 'ollama' | 'anthropic' | 'openai';
+export type UnitSystem = 'us' | 'metric';
+export type TempScale = 'F' | 'C';
+
+export interface Settings {
+  backend: string;
+  base_url: string;
+  generation_model: string;
+  temperature: number;
+  context_window: number;
+  embedding_model: string;
+  unit_system: string;
+  temp_scale: string;
+  overridden: string[];
+}
+
+export interface SettingsUpdate {
+  backend?: Backend;
+  base_url?: string;
+  generation_model?: string;
+  temperature?: number;
+  context_window?: number;
+  embedding_model?: string;
+  unit_system?: UnitSystem;
+  temp_scale?: TempScale;
+}

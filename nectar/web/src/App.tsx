@@ -7,6 +7,7 @@ import { RecommendSetup } from './components/RecommendSetup';
 import { Results } from './components/Results';
 import { EvidencePanel } from './components/EvidencePanel';
 import { AskPanel } from './components/AskPanel';
+import { SettingsPanel } from './components/SettingsPanel';
 import type { ClinicalSnapshot, DerivedConstraint, NutrientInfo, RecommendResponse } from './types';
 
 type Step = 'profile' | 'confirm' | 'recommend';
@@ -26,6 +27,7 @@ export function App(): JSX.Element {
   const [confirmed, setConfirmed] = useState<DerivedConstraint[]>([]);
   const [result, setResult] = useState<RecommendResponse | null>(null);
   const [vocab, setVocab] = useState<Map<string, NutrientInfo>>(new Map());
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // The nutrient vocabulary (id -> name, unit) labels every nutrient value in the results. Fetched
   // once; the results panel stays purely presentational.
@@ -99,7 +101,12 @@ export function App(): JSX.Element {
             Nutritional Evaluation and Clinical Therapeutic Advisory Resource
             <span className="sub-tag">research use only</span>
           </span>
+          <button className="btn-ghost btn-sm settings-btn" onClick={() => setSettingsOpen(true)}>
+            &#9881; Settings
+          </button>
         </div>
+
+        {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
 
         {step === 'profile' && (
           <div className="hero" role="img" aria-label="A plated, portion-controlled meal">

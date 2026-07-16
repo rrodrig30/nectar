@@ -15,6 +15,8 @@ import type {
   NutrientInfo,
   RecipeDetail,
   RecommendResponse,
+  Settings,
+  SettingsUpdate,
 } from './types';
 
 const BASE: string = import.meta.env.VITE_API_BASE ?? '/api';
@@ -115,5 +117,29 @@ export const api = {
   /** POST /ask - natural-language question, grounded within the current ranking's dishes. */
   ask(req: AskRequest): Promise<AskResponse> {
     return postJson<AskResponse>('/ask', req);
+  },
+
+  /** GET /settings - the effective runtime settings (config defaults + operator overrides). */
+  getSettings(): Promise<Settings> {
+    return request<Settings>('/settings');
+  },
+
+  /** PUT /settings - apply an operator override; returns the new effective settings. */
+  putSettings(update: SettingsUpdate): Promise<Settings> {
+    return request<Settings>('/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(update),
+    });
+  },
+
+  /** DELETE /settings - drop overrides, return to config defaults. */
+  resetSettings(): Promise<Settings> {
+    return request<Settings>('/settings', { method: 'DELETE' });
+  },
+
+  /** GET /settings/models - models available from the active backend (empty if none discoverable). */
+  models(): Promise<string[]> {
+    return request<string[]>('/settings/models');
   },
 };

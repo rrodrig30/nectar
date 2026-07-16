@@ -52,6 +52,24 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
   align-self: flex-start; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
   font-weight: 700; color: var(--warn); background: var(--warn-soft); padding: 0.05rem 0.4rem; border-radius: 4px;
 }
+.masthead .settings-btn { margin-left: auto; align-self: center; white-space: nowrap; }
+
+/* --- Settings modal --- */
+.modal-scrim {
+  position: fixed; inset: 0; z-index: 100; background: rgba(16, 24, 20, 0.5);
+  display: flex; align-items: flex-start; justify-content: center; padding: 4vh 1rem; overflow-y: auto;
+}
+.modal {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(16, 24, 20, 0.25); width: 100%; max-width: 620px; padding: 1.3rem 1.4rem;
+}
+.modal-head { display: flex; justify-content: space-between; align-items: center; }
+.modal-head h2 { margin: 0; }
+.set-group { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent);
+  margin: 1.1rem 0 0.5rem; border-bottom: 1px solid var(--line); padding-bottom: 0.3rem; }
+.ov { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+  color: var(--warn); background: var(--warn-soft); padding: 0.02rem 0.35rem; border-radius: 4px; margin-left: 0.35rem; }
+input[type="range"] { padding: 0; accent-color: var(--accent); }
 
 /* --- Hero (landing / profile step only) --- */
 .hero {
