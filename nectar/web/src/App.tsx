@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, ApiError } from './api';
 import { BoundaryBanner } from './components/BoundaryBanner';
 import { ProfileBuilder } from './components/ProfileBuilder';
@@ -7,7 +7,7 @@ import { RecommendSetup } from './components/RecommendSetup';
 import { Results } from './components/Results';
 import { EvidencePanel } from './components/EvidencePanel';
 import { AskPanel } from './components/AskPanel';
-import type { ClinicalSnapshot, DerivedConstraint, RecommendResponse } from './types';
+import type { ClinicalSnapshot, DerivedConstraint, NutrientInfo, RecommendResponse } from './types';
 
 type Step = 'profile' | 'confirm' | 'recommend';
 
@@ -25,6 +25,18 @@ export function App(): JSX.Element {
   const [derived, setDerived] = useState<DerivedConstraint[]>([]);
   const [confirmed, setConfirmed] = useState<DerivedConstraint[]>([]);
   const [result, setResult] = useState<RecommendResponse | null>(null);
+  const [vocab, setVocab] = useState<Map<string, NutrientInfo>>(new Map());
+
+  // The nutrient vocabulary (id -> name, unit) labels every nutrient value in the results. Fetched
+  // once; the results panel stays purely presentational.
+  useEffect(() => {
+    let live = true;
+    api
+      .nutrients()
+      .then((list) => { if (live) setVocab(new Map(list.map((n) => [n.nutrient_id, n]))); })
+      .catch(() => { /* values still render by id if the vocab lookup fails */ });
+    return () => { live = false; };
+  }, []);
 
   const fail = (e: unknown): void =>
     setError(e instanceof ApiError ? e.message : String(e));
@@ -134,7 +146,7 @@ export function App(): JSX.Element {
               onBack={() => setStep('confirm')}
               loading={loading}
             />
-            {result && <Results result={result} />}
+            {result && <Results result={result} vocab={vocab} />}
             {result && <EvidencePanel confirmed={confirmed} result={result} />}
             {result && result.rankings.length > 0 && <AskPanel result={result} />}
           </>

@@ -1,100 +1,105 @@
-import type { DishRanking, Evaluation, NutrientValue, RecommendResponse } from '../types';
+import { useEffect, useState } from 'react';
+import { api } from '../api';
+import type { DishRanking, Evaluation, NutrientInfo, RecipeDetail, RecommendResponse } from '../types';
+import { fmt } from '../nutrients';
+import { NutritionPanel } from './NutritionPanel';
+import { RecipeView } from './RecipeView';
 
-function fmt(n: number): string {
-  if (!Number.isFinite(n)) return String(n);
-  const abs = Math.abs(n);
-  if (abs !== 0 && (abs < 0.01 || abs >= 100000)) return n.toExponential(2);
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+function StatusBadge({ e }: { e: Evaluation | null }): JSX.Element {
+  if (!e) return <span className="muted">no admissible version</span>;
+  if (e.contraindicated) return <span className="pill bad">Contraindicated</span>;
+  if (e.admissible) return <span className="pill ok">Admissible</span>;
+  return <span className="pill neutral">Not admissible</span>;
 }
 
-function Nutrients({ items }: { items: NutrientValue[] }): JSX.Element {
-  if (items.length === 0) return <span className="muted">no disclosed nutrients</span>;
-  return (
-    <div>
-      {items.map((nv) => (
-        // The disclaimer (calculated-not-measured, with source + confidence) is on every value.
-        <span className="nutrient" key={nv.nutrient} title={nv.disclaimer}>
-          <span className="n-name">{nv.nutrient}</span>
-          <span className="n-val">{fmt(nv.value)}</span>
-          {!nv.measured && <span className="calc-note">calc</span>}
-        </span>
-      ))}
-    </div>
-  );
-}
+function DishCard({ r, vocab }: { r: DishRanking; vocab: Map<string, NutrientInfo> }): JSX.Element {
+  const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
+  const [recipeState, setRecipeState] = useState<'loading' | 'ok' | 'none'>('loading');
 
-function EvalRow({ e, label }: { e: Evaluation; label: string }): JSX.Element {
+  useEffect(() => {
+    let live = true;
+    setRecipeState('loading');
+    api
+      .recipe(r.dish_id)
+      .then((rc) => { if (live) { setRecipe(rc); setRecipeState('ok'); } })
+      .catch(() => { if (live) { setRecipe(null); setRecipeState('none'); } });
+    return () => { live = false; };
+  }, [r.dish_id]);
+
+  const best = r.best;
+  const contra = best?.contraindicated ?? false;
+  const title = recipe?.title ?? r.dish_id.replace(/^dish:/, '');
+  const stats = Object.values(r.nutrient_stats);
+
   return (
-    <div>
-      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <span className="muted">{label}</span>
-        <code className="dish-id">{e.variant_id}</code>
-        {e.contraindicated ? (
-          <span className="badge-bad">contraindicated</span>
-        ) : e.admissible ? (
-          <span className="badge-ok">admissible</span>
-        ) : (
-          <span className="muted">not admissible</span>
-        )}
-        <span className="score-pill">score {fmt(e.score)}</span>
+    <div className={`dish-card${contra ? ' contra' : ''}`}>
+      <div className="dc-head">
+        <div>
+          <div className="dc-title">{title}</div>
+          <code className="dc-id">{r.dish_id}</code>
+        </div>
+        <div className="dc-status">
+          <StatusBadge e={best} />
+          {best && <span className="score-pill" title="Higher is a better fit for the confirmed constraints">score {fmt(best.score)}</span>}
+        </div>
       </div>
-      {e.reasons.length > 0 && (
-        <ul className="muted" style={{ margin: '0.3rem 0', fontSize: '0.82rem' }}>
-          {e.reasons.map((r, i) => <li key={i}>{r}</li>)}
+
+      {best && best.reasons.length > 0 && (
+        <ul className="reasons">
+          {best.reasons.map((rz, i) => <li key={i}>{rz}</li>)}
         </ul>
       )}
-      <Nutrients items={e.nutrients} />
-    </div>
-  );
-}
 
-function DishCard({ r }: { r: DishRanking }): JSX.Element {
-  const contra = r.best?.contraindicated ?? false;
-  const stats = Object.values(r.nutrient_stats);
-  return (
-    <div className={`dish${contra ? ' contra' : ''}`}>
-      <div className="dish-head">
-        <span className="dish-name">{r.dish_id}</span>
-        {r.best && <span className="score-pill">best {fmt(r.best.score)}</span>}
+      <div className="dc-body">
+        <div className="dc-col">
+          <h3 className="col-h">Ingredients &amp; preparation</h3>
+          {recipeState === 'loading' && <p className="spinner">Loading recipe…</p>}
+          {recipeState === 'none' && <p className="muted">No recipe record for this dish.</p>}
+          {recipeState === 'ok' && recipe && <RecipeView recipe={recipe} />}
+        </div>
+        <div className="dc-col">
+          {best ? (
+            <NutritionPanel nutrients={best.nutrients} vocab={vocab} />
+          ) : (
+            <p className="muted">No admissible version, so no per-serving facts are shown.</p>
+          )}
+        </div>
       </div>
-
-      {r.best ? (
-        <EvalRow e={r.best} label="Best version" />
-      ) : (
-        <p className="muted">No admissible version for this patient.</p>
-      )}
 
       {r.versions.length > 1 && (
         <details>
           <summary>{r.versions.length} versions evaluated</summary>
-          <div style={{ marginTop: '0.5rem', display: 'grid', gap: '0.6rem' }}>
-            {r.versions.map((v, i) => <EvalRow key={v.variant_id} e={v} label={`Version ${i + 1}`} />)}
-          </div>
+          <table className="mini">
+            <thead><tr><th>Variant</th><th>Status</th><th className="num">Score</th></tr></thead>
+            <tbody>
+              {r.versions.map((v) => (
+                <tr key={v.variant_id}>
+                  <td><code>{v.variant_id}</code></td>
+                  <td><StatusBadge e={v} /></td>
+                  <td className="num">{fmt(v.score)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </details>
       )}
 
       {stats.length > 0 && (
         <details>
           <summary>Version spread across this dish ({stats[0]?.count ?? 0} versions)</summary>
-          <div style={{ overflowX: 'auto', marginTop: '0.4rem' }}>
-            <table>
-              <thead>
-                <tr><th>Nutrient</th><th>Min</th><th>Median</th><th>Max</th><th>Mean</th><th>SD</th></tr>
-              </thead>
-              <tbody>
-                {stats.map((s) => (
-                  <tr key={s.nutrient}>
-                    <td>{s.nutrient} <span className="muted">({s.unit})</span></td>
-                    <td>{fmt(s.minimum)}</td>
-                    <td>{fmt(s.median)}</td>
-                    <td>{fmt(s.maximum)}</td>
-                    <td>{fmt(s.mean)}</td>
-                    <td>{fmt(s.stdev)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <table className="mini">
+            <thead><tr><th>Nutrient</th><th className="num">Min</th><th className="num">Median</th><th className="num">Max</th></tr></thead>
+            <tbody>
+              {stats.map((s) => (
+                <tr key={s.nutrient}>
+                  <td>{s.nutrient} <span className="muted">({s.unit})</span></td>
+                  <td className="num">{fmt(s.minimum)}</td>
+                  <td className="num">{fmt(s.median)}</td>
+                  <td className="num">{fmt(s.maximum)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </details>
       )}
     </div>
@@ -103,9 +108,10 @@ function DishCard({ r }: { r: DishRanking }): JSX.Element {
 
 interface Props {
   result: RecommendResponse;
+  vocab: Map<string, NutrientInfo>;
 }
 
-export function Results({ result }: Props): JSX.Element {
+export function Results({ result, vocab }: Props): JSX.Element {
   return (
     <div className="card">
       <h2>Recommendations</h2>
@@ -134,7 +140,7 @@ export function Results({ result }: Props): JSX.Element {
       {result.rankings.length === 0 ? (
         <p className="muted">No dishes ranked.</p>
       ) : (
-        result.rankings.map((r) => <DishCard key={r.dish_id} r={r} />)
+        result.rankings.map((r) => <DishCard key={r.dish_id} r={r} vocab={vocab} />)
       )}
 
       <div className="notice info" style={{ marginTop: '0.8rem' }}>

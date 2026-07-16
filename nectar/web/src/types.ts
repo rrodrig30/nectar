@@ -73,6 +73,28 @@ export interface Guideline {
   chunk: string | null;
 }
 
+export interface NutrientInfo {
+  nutrient_id: string;
+  name: string | null;
+  unit: string | null;
+}
+
+export interface Ingredient {
+  food: string | null;
+  amount: number | null;
+  method: string | null;
+  cut_class: string | null;
+}
+
+export interface RecipeDetail {
+  recipe_id: string;
+  title: string | null;
+  servings: number | null;
+  source_id: string | null;
+  license: string | null;
+  ingredients: Ingredient[];
+}
+
 // --- Recommendation (engine/*, present/disclaimer.py) ---
 
 export interface NutrientValue {

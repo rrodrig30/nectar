@@ -12,6 +12,8 @@ import type {
   DeriveResponse,
   DishSummary,
   Guideline,
+  NutrientInfo,
+  RecipeDetail,
   RecommendResponse,
 } from './types';
 
@@ -98,6 +100,16 @@ export const api = {
     if (ids.length === 0) return Promise.resolve([]);
     const qs = ids.map((id) => `ids=${encodeURIComponent(id)}`).join('&');
     return request<Guideline[]>(`/guidelines?${qs}`);
+  },
+
+  /** GET /nutrients - the nutrient vocabulary (id, name, unit) for labeling values. */
+  nutrients(): Promise<NutrientInfo[]> {
+    return request<NutrientInfo[]>('/nutrients');
+  },
+
+  /** GET /recipe - the primary recipe (title, servings, ingredients + preparation) for a dish. */
+  recipe(dishId: string): Promise<RecipeDetail> {
+    return request<RecipeDetail>(`/recipe?dish_id=${encodeURIComponent(dishId)}`);
   },
 
   /** POST /ask - natural-language question, grounded within the current ranking's dishes. */
