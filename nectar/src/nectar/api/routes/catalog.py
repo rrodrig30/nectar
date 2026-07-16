@@ -6,10 +6,16 @@ into response models. No clinical literal or scoring rule lives here (invariants
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from nectar.api.deps import get_contract_client
-from nectar.api.schemas import ConditionOut, DishSummaryOut, GuidelineOut
+from nectar.api.schemas import (
+    ConditionOut,
+    DishSummaryOut,
+    GuidelineOut,
+    NutrientInfoOut,
+    RecipeDetailOut,
+)
 from nectar.common.contract_client import ContractClient
 
 router = APIRouter()
@@ -43,3 +49,24 @@ def get_guidelines(
     if not ids:
         return []
     return [GuidelineOut(**row) for row in client.guideline_passages(ids)]
+
+
+@router.get("/nutrients", response_model=list[NutrientInfoOut])
+def get_nutrients(
+    client: ContractClient = Depends(get_contract_client),
+) -> list[NutrientInfoOut]:
+    """The nutrient vocabulary (id, name, unit), so the UI can label nutrient values."""
+    return [NutrientInfoOut(**row) for row in client.list_nutrients()]
+
+
+@router.get("/recipe", response_model=RecipeDetailOut)
+def get_recipe(
+    dish_id: str = Query(min_length=1, description="Dish id to fetch the primary recipe for"),
+    client: ContractClient = Depends(get_contract_client),
+) -> RecipeDetailOut:
+    """The primary recipe for a dish - title, servings, provenance, ingredients with preparation.
+    404 when the dish has no recipe. Read-only."""
+    recipe = client.recipe_for_dish(dish_id)
+    if recipe is None:
+        raise HTTPException(status_code=404, detail=f"no recipe for dish {dish_id!r}")
+    return RecipeDetailOut(**recipe)

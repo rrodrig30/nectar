@@ -153,6 +153,38 @@ class GuidelineOut(BaseModel):
     chunk: str | None = None
 
 
+class NutrientInfoOut(BaseModel):
+    """One entry of the speciated nutrient vocabulary, so the UI can label a value with a human
+    name and its canonical unit (contract Section 1.2)."""
+
+    nutrient_id: str
+    name: str | None = None
+    unit: str | None = None
+
+
+class IngredientOut(BaseModel):
+    """One ingredient of a recipe: the resolved food, its parsed amount, and the parsed preparation
+    (method + cut). `amount` is the parsed quantity in the corpus record and is not a calibrated
+    per-serving gram value (normalization is incomplete upstream); the UI labels it as such."""
+
+    food: str | None = None
+    amount: float | None = None
+    method: str | None = None
+    cut_class: str | None = None
+
+
+class RecipeDetailOut(BaseModel):
+    """The primary recipe behind a dish, for the recipe view: title, servings, provenance, and the
+    ingredient list with per-ingredient preparation."""
+
+    recipe_id: str
+    title: str | None = None
+    servings: float | None = None
+    source_id: str | None = None
+    license: str | None = None
+    ingredients: list[IngredientOut] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Recommendation (engine/*, present/disclaimer.py)
 # ---------------------------------------------------------------------------

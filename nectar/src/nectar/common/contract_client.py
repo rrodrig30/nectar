@@ -26,9 +26,11 @@ from nectar_contract.names import (
     ADDRESSED_BY,
     COMPOUND,
     CONDITION,
+    CONTAINS,
     DIETARY_RULE,
     DISH,
     EVIDENCED_BY,
+    FOOD,
     FOOD_ATTRIBUTE,
     GUIDELINE,
     HAS_ATTRIBUTE,
@@ -91,6 +93,28 @@ _LIST_CONDITIONS = f"""
 MATCH (c:{CONDITION})
 RETURN c.condition_id AS condition_id, c.name AS name
 ORDER BY c.condition_id
+"""
+
+_LIST_NUTRIENTS = f"""
+MATCH (n:{NUTRIENT})
+RETURN n.nutrient_id AS nutrient_id, n.name AS name, n.unit AS unit
+ORDER BY n.nutrient_id
+"""
+
+# The primary recipe for a dish (highest confidence), with its ingredient list and the parsed
+# preparation (method + cut) for each ingredient. Preparation is joined by the prep_id string that
+# CONTAINS carries (Preparation nodes are keyed by prep_id, not linked by an edge).
+_RECIPE_FOR_DISH = f"""
+MATCH (d:{DISH} {{dish_id: $dish_id}})-[:{HAS_VERSION}]->(r:{RECIPE})
+WITH r ORDER BY coalesce(r.confidence, 0.0) DESC LIMIT 1
+OPTIONAL MATCH (r)-[c:{CONTAINS}]->(f:{FOOD})
+OPTIONAL MATCH (p:{PREPARATION} {{prep_id: c.prep_id}})
+WITH r, c, f, p ORDER BY coalesce(c.raw_mass_g, 0.0) DESC
+RETURN r.recipe_id AS recipe_id, r.title AS title, r.servings AS servings,
+       r.source_id AS source_id, r.license AS license,
+       collect(CASE WHEN f IS NULL THEN NULL ELSE
+         {{food: f.description, amount: c.raw_mass_g, method: p.method, cut_class: p.cut_class}}
+       END) AS ingredients
 """
 
 _CONSTRAINTS_FOR_CONDITION = f"""
@@ -335,6 +359,22 @@ class ContractClient:
         """All `:Condition` nodes in the knowledge base (`{condition_id, name}`), so the UI can
         offer a real condition selector rather than free-text ids."""
         return self._read(_LIST_CONDITIONS)
+
+    def list_nutrients(self) -> list[dict[str, Any]]:
+        """The speciated nutrient vocabulary (`{nutrient_id, name, unit}`), so the UI can label
+        nutrient values with a human name and their canonical unit."""
+        return self._read(_LIST_NUTRIENTS)
+
+    def recipe_for_dish(self, dish_id: str) -> dict[str, Any] | None:
+        """The primary recipe for a dish: title, servings, source/license, and the ingredient list
+        with each ingredient's parsed preparation (method, cut). Returns None when the dish has no
+        recipe. Ingredient entries whose food did not resolve are dropped."""
+        rows = self._read(_RECIPE_FOR_DISH, dish_id=dish_id)
+        if not rows:
+            return None
+        row = rows[0]
+        row["ingredients"] = [ing for ing in row.get("ingredients", []) if ing is not None]
+        return row
 
     def dish_nutrient_stats(self, dish_id: str) -> dict[str, DishNutrientStat]:
         """Per-nutrient distribution statistics across a Dish's versions (contract Section 5), keyed
