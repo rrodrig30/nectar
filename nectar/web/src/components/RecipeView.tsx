@@ -21,6 +21,20 @@ export function RecipeView({ recipe }: Props): JSX.Element {
         {recipe.source_id && <span className="meta-chip">source: {recipe.source_id}</span>}
       </div>
 
+      {(recipe.serving_mass_g != null || recipe.energy_kcal != null || recipe.fluid_ml != null) && (
+        <div className="serving-facts" title="Calculated per-serving facts for the as-authored version">
+          {recipe.serving_mass_g != null && (
+            <span className="sf"><b>{Math.round(recipe.serving_mass_g)}</b> g<span className="sf-l">per serving</span></span>
+          )}
+          {recipe.energy_kcal != null && (
+            <span className="sf"><b>{Math.round(recipe.energy_kcal)}</b> kcal<span className="sf-l">energy</span></span>
+          )}
+          {recipe.fluid_ml != null && (
+            <span className="sf"><b>{Math.round(recipe.fluid_ml)}</b> mL<span className="sf-l">fluid</span></span>
+          )}
+        </div>
+      )}
+
       {methods.length > 0 && (
         <div className="prep-summary">
           <span className="muted">Preparation methods:</span>

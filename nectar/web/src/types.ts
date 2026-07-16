@@ -92,6 +92,9 @@ export interface RecipeDetail {
   servings: number | null;
   source_id: string | null;
   license: string | null;
+  serving_mass_g: number | null;
+  energy_kcal: number | null;
+  fluid_ml: number | null;
   ingredients: Ingredient[];
 }
 

@@ -208,14 +208,18 @@ class IngredientOut(BaseModel):
 
 
 class RecipeDetailOut(BaseModel):
-    """The primary recipe behind a dish, for the recipe view: title, servings, provenance, and the
-    ingredient list with per-ingredient preparation."""
+    """The primary recipe behind a dish, for the recipe view: title, servings, provenance, the
+    ingredient list with per-ingredient preparation, and the as-authored variant's per-serving
+    facts (mass, energy, fluid). Serving facts are null when the variant has not been materialized."""
 
     recipe_id: str
     title: str | None = None
     servings: float | None = None
     source_id: str | None = None
     license: str | None = None
+    serving_mass_g: float | None = None
+    energy_kcal: float | None = None
+    fluid_ml: float | None = None
     ingredients: list[IngredientOut] = Field(default_factory=list)
 
 

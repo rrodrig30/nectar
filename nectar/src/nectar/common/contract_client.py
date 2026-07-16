@@ -107,11 +107,14 @@ ORDER BY n.nutrient_id
 _RECIPE_FOR_DISH = f"""
 MATCH (d:{DISH} {{dish_id: $dish_id}})-[:{HAS_VERSION}]->(r:{RECIPE})
 WITH r ORDER BY coalesce(r.confidence, 0.0) DESC LIMIT 1
+OPTIONAL MATCH (r)-[:{HAS_VARIANT}]->(v:{RECIPE_VARIANT} {{is_as_authored: true}})
+WITH r, v
 OPTIONAL MATCH (r)-[c:{CONTAINS}]->(f:{FOOD})
 OPTIONAL MATCH (p:{PREPARATION} {{prep_id: c.prep_id}})
-WITH r, c, f, p ORDER BY coalesce(c.raw_mass_g, 0.0) DESC
+WITH r, v, c, f, p ORDER BY coalesce(c.raw_mass_g, 0.0) DESC
 RETURN r.recipe_id AS recipe_id, r.title AS title, r.servings AS servings,
        r.source_id AS source_id, r.license AS license,
+       v.serving_mass_g AS serving_mass_g, v.energy_kcal AS energy_kcal, v.fluid_ml AS fluid_ml,
        collect(CASE WHEN f IS NULL THEN NULL ELSE
          {{food: f.description, amount: c.raw_mass_g, method: p.method, cut_class: p.cut_class}}
        END) AS ingredients

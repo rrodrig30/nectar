@@ -227,6 +227,11 @@ summary { cursor: pointer; color: var(--accent); font-size: 0.85rem; font-weight
 
 /* --- Recipe / ingredients / preparation --- */
 .recipe-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.6rem; }
+.serving-facts { display: flex; flex-wrap: wrap; gap: 1.2rem; margin: 0 0 0.7rem; padding: 0.5rem 0.7rem;
+  background: var(--accent-soft); border-radius: 8px; }
+.serving-facts .sf { display: flex; flex-direction: column; line-height: 1.15; color: var(--accent); }
+.serving-facts .sf b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.serving-facts .sf-l { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); font-weight: 600; }
 .meta-chip { background: #eef2f5; color: var(--ink-soft); border-radius: 6px; padding: 0.15rem 0.5rem; font-size: 0.78rem; }
 .meta-chip b { color: var(--ink); }
 .prep-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-bottom: 0.6rem; font-size: 0.82rem; }
