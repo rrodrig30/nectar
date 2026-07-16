@@ -62,7 +62,6 @@ from nutriscrape.acquisition.parse import (
 from nutriscrape.common import confidence
 from nutriscrape.common.config import default_config_dir, load_config
 from nutriscrape.common.provenance import make_provenance
-from nutriscrape.common.units import UnitError
 from nutriscrape.extraction.ingredients import ParsedIngredient
 from nutriscrape.extraction.preparation import ParsedPreparation
 from nutriscrape.graph.client import GraphClient
@@ -110,7 +109,7 @@ from nutriscrape.knowledge.loaders import (
 )
 from nutriscrape.nutrition.compose import IngredientFacts, compose_serving_vector
 from nutriscrape.nutrition.distribution import distribution
-from nutriscrape.nutrition.normalize import to_canonical
+from nutriscrape.nutrition.measures import resolve_mass_g_default
 from nutriscrape.nutrition.transform import Preparation
 from nutriscrape.resolution.fdc_bulk import iter_bulk_foods
 from nutriscrape.resolution.fdc_client import FdcClient, FdcConfigError, FdcRequestError
@@ -354,6 +353,10 @@ class IngestDeps:
         [Sequence[str], Sequence[str]], list[ParsedPreparation]
     ] = basic_preparation
     classify: Callable[[str], list[str]] = classify_food
+    # Resolve a parsed (quantity, unit, food description) to canonical grams. The default handles
+    # mass and volume units and, critically, bare counts ("2 eggs") via portion weights; a fake can
+    # be injected in tests. See nutrition/measures.py.
+    mass_resolver: Callable[[float | None, str | None, str], float] = resolve_mass_g_default
     # Persist HAS_NUTRIENT_RAW during ingest (the API path). False on the local path, where the bulk
     # import already wrote the food's raw vector, so ingest does not rewrite it per recipe.
     persist_raw: bool = True
@@ -456,16 +459,10 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
                 data_type=resolved.data_type,
                 source_tier="fdc",
             )
-        try:
-            canonical = to_canonical(ingredient.quantity or 0.0, ingredient.unit or "g")
-        except UnitError:
-            logger.warning(
-                "ingest: recipe %s: unrecognized unit %r for %r; skipping this ingredient",
-                raw.recipe_id,
-                ingredient.unit,
-                ingredient.food,
-            )
-            continue
+        # Resolve to canonical grams via mass/volume conversion or a per-item portion weight for
+        # counts. Unlike the old `unit or "g"` default (which made "2 eggs" 2 g), this gives a real
+        # mass basis for the nutrition math; it never raises, so no ingredient is dropped on a unit.
+        mass_g = deps.mass_resolver(ingredient.quantity, ingredient.unit, resolved.description)
         prep = _to_transform_prep(prep_by_ref.get(ingredient.food))
         prep_id = f"{raw.recipe_id}:{resolved.fdc_id}"
         merge_preparation(
@@ -482,7 +479,7 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
             client,
             recipe_id=raw.recipe_id,
             fdc_id=resolved.fdc_id,
-            raw_mass_g=canonical.value,
+            raw_mass_g=mass_g,
             prep_id=prep_id,
         )
         try:
@@ -517,7 +514,7 @@ def _ingest_recipe(raw: RawRecipe, deps: IngestDeps, client: GraphClient) -> Non
             IngredientFacts(
                 fdc_id=resolved.fdc_id,
                 food_classes=tuple(deps.classify(resolved.description)),
-                mass_g=canonical.value,
+                mass_g=mass_g,
                 prep=prep,
                 raw_per_100g=raw_per_100g,
             )

@@ -1,0 +1,59 @@
+# Resolve a parsed ingredient quantity to canonical grams.
+#
+# ILLUSTRATIVE reference densities and portion weights, pending review against USDA FDC
+# food_portion (the authoritative per-food gram_weight source, keyed by fdc_id). Keys are matched
+# as case-insensitive substrings of the FDC food description; the longest matching key wins.
+# `default` applies when nothing matches.
+#
+#   volume_density_g_per_ml  - g per mL, used to turn a volume unit (cup, tbsp, ...) into grams
+#   count_grams              - g per single item, used for a count or unitless quantity ("2 eggs")
+
+volume_density_g_per_ml:
+  default: 1.0            # water-like
+  water: 1.0
+  milk: 1.03
+  cream: 1.00
+  yogurt: 1.03
+  juice: 1.04
+  broth: 1.00
+  stock: 1.00
+  wine: 0.99
+  oil: 0.92
+  butter: 0.96
+  honey: 1.42
+  syrup: 1.37
+  molasses: 1.40
+  flour: 0.53
+  sugar: 0.85
+  brown sugar: 0.93
+  powdered sugar: 0.56
+  cornstarch: 0.54
+  cocoa: 0.52
+  rice: 0.85
+  oats: 0.41
+  salt: 1.22
+
+count_grams:
+  default: 100
+  egg white: 33
+  egg yolk: 17
+  egg: 50
+  clove: 3               # garlic clove
+  green onion: 15
+  onion: 110
+  shallot: 40
+  garlic: 5
+  carrot: 61
+  celery: 40             # 1 stalk
+  potato: 173
+  tomato: 123
+  apple: 182
+  banana: 118
+  lemon: 58
+  lime: 67
+  orange: 131
+  bell pepper: 119
+  cucumber: 201
+  avocado: 150
+  jalapeno: 14
+  mushroom: 18
