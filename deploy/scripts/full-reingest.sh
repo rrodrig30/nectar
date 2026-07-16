@@ -40,8 +40,11 @@ HEAP="${NEO4J_HEAP:-16G}"
 PAGECACHE="${NEO4J_PAGECACHE:-24G}"
 CKPT_DIR="${CKPT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nectar/reingest}"
 
-# schema -> knowledge -> fdc-import -> ingest -> cluster -> materialize -> dish-stats
-STAGES=(schema knowledge fdc-import ingest cluster materialize dish-stats)
+# The build DAG. Default: the parallel Prefect `flow` (schema -> knowledge -> fdc-import ->
+# parallel ingest over NUTRISCRAPE_MAX_PARALLEL batches -> cluster -> materialize) then dish-stats.
+# Override for the single-process path (finer per-stage checkpoints, no parallelism):
+#   NUTRISCRAPE_STAGES="schema knowledge fdc-import ingest cluster materialize dish-stats"
+read -r -a STAGES <<< "${NUTRISCRAPE_STAGES:-flow dish-stats}"
 
 log()  { printf '\033[1;32m[reingest]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[reingest]\033[0m %s\n' "$*" >&2; }
