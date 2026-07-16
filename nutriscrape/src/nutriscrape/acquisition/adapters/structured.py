@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable, Iterator, Sequence
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
 from nutriscrape.acquisition.adapters.base import RawRecipe
@@ -55,7 +55,9 @@ def _default_scraper(url: str) -> ScrapedRecipe:
             "recipe-scrapers is not installed; add it (pip install recipe-scrapers) to scrape "
             "schema.org sites, or point the corpus at a dataset CSV instead."
         ) from exc
-    return scrape_me(url)  # type: ignore[no-any-return]
+    # recipe-scrapers is untyped, so scrape_me returns Any; cast is robust across mypy versions
+    # (an explicit ignore drifts to "unused" on newer mypy).
+    return cast(ScrapedRecipe, scrape_me(url))
 
 
 def _safe(getter: Callable[[], _T], default: _T) -> _T:
