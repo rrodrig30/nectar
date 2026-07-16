@@ -32,6 +32,7 @@ REBUILD_CT="${REBUILD_CT:-neo4j-rebuild}"
 REBUILD_VOL="${REBUILD_VOL:-neo4j-rebuild-data}"
 CORPUS_VOL="${CORPUS_VOL:-corpus-staging}"
 FDC_VOL="${FDC_VOL:-fdc-staging}"
+BULK_VOL="${BULK_VOL:-bulk-import}"
 SECRET_NAME="${SECRET_NAME:-nectar_neo4j_pass}"
 CORPUS_PATH="${NUTRISCRAPE_CORPUS:-/data/recipes_full.csv}"   # path INSIDE the container
 FDC_BULK_DIR="${FDC_BULK_DIR:-/fdc}"                          # path INSIDE the container
@@ -40,11 +41,13 @@ HEAP="${NEO4J_HEAP:-16G}"
 PAGECACHE="${NEO4J_PAGECACHE:-24G}"
 CKPT_DIR="${CKPT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nectar/reingest}"
 
-# The build DAG. Default: the parallel Prefect `flow` (schema -> knowledge -> fdc-import ->
-# parallel ingest over NUTRISCRAPE_MAX_PARALLEL batches -> cluster -> materialize) then dish-stats.
-# Override for the single-process path (finer per-stage checkpoints, no parallelism):
-#   NUTRISCRAPE_STAGES="schema knowledge fdc-import ingest cluster materialize dish-stats"
-read -r -a STAGES <<< "${NUTRISCRAPE_STAGES:-flow dish-stats}"
+# The build DAG. Default: the bulk path - bulk-export resolves the whole corpus in memory (no
+# per-recipe Neo4j round-trips) and writes CSVs to the shared import volume, then bulk-load LOAD
+# CSVs them single-threaded. This is the corpus-scale path (the Prefect `flow` serializes huge
+# batch inputs and stalls; the single-process `ingest` is steady but ~10 recipes/s). Overrides:
+#   NUTRISCRAPE_STAGES="schema knowledge fdc-import ingest cluster materialize dish-stats"   (single-process)
+#   NUTRISCRAPE_STAGES="flow dish-stats"                                                     (parallel flow)
+read -r -a STAGES <<< "${NUTRISCRAPE_STAGES:-schema knowledge fdc-import bulk-export bulk-load cluster materialize dish-stats}"
 
 log()  { printf '\033[1;32m[reingest]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[reingest]\033[0m %s\n' "$*" >&2; }
@@ -97,10 +100,12 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
 fi
 
 # --- Start the rebuild Neo4j on its own volume (never the live one) ------------------------------
+podman volume exists "$BULK_VOL" || podman volume create "$BULK_VOL" >/dev/null
 if ! podman container exists "$REBUILD_CT"; then
   log "starting rebuild Neo4j ($REBUILD_CT) on volume $REBUILD_VOL"
   podman run -d --name "$REBUILD_CT" --network "$NETWORK" \
     -v "$REBUILD_VOL:/data" \
+    -v "$BULK_VOL:/var/lib/neo4j/import" \
     -e NEO4J_AUTH="neo4j/$PW" \
     -e NEO4J_server_memory_heap_initial__size="$HEAP" \
     -e NEO4J_server_memory_heap_max__size="$HEAP" \
@@ -126,7 +131,8 @@ run_stage() {
     -e NEO4J_URI="bolt://$REBUILD_CT:7687" -e NEO4J_USER=neo4j -e NEO4J_PASSWORD="$PW" \
     -e NUTRISCRAPE_CORPUS="$CORPUS_PATH" -e NUTRISCRAPE_SOURCE_ID=recipenlg \
     -e FDC_BULK_DIR="$FDC_BULK_DIR" -e NUTRISCRAPE_MAX_PARALLEL="$PARALLEL" \
-    -v "$CORPUS_VOL:/data:Z" -v "$FDC_VOL:/fdc:Z" \
+    -e BULK_OUT_DIR=/import \
+    -v "$CORPUS_VOL:/data:Z" -v "$FDC_VOL:/fdc:Z" -v "$BULK_VOL:/import:Z" \
     "$NUTRISCRAPE_IMAGE" "$stage"
 }
 
