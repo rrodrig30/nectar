@@ -10,4 +10,6 @@ RUN npm run build
 FROM docker.io/nginxinc/nginx-unprivileged:stable
 # nginx-unprivileged listens on 8080 and runs as a non-root user (rootless-friendly)
 COPY --from=build /web/dist /usr/share/nginx/html
+# Serve the SPA and proxy /api/ to the API container (see nginx.conf).
+COPY nectar/web/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 8080

@@ -1,3 +1,13 @@
-// Entry point placeholder. Implement the profile builder and results views per ../README.md.
-// The boundary banner is persistent and non-dismissible.
-export {};
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { App } from './App';
+import './styles.css';
+
+const el = document.getElementById('root');
+if (!el) throw new Error('#root element not found');
+
+createRoot(el).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);

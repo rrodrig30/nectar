@@ -1,0 +1,8 @@
+# Frontend build artifacts and dependencies
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Stray JS/d.ts that older tsc project-reference builds can emit next to sources
+vite.config.js
+vite.config.d.ts
