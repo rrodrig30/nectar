@@ -28,6 +28,14 @@ must be staged. The driver preflights all of this and refuses to start if anythi
 
 ## 1. Build the new graph
 
+Verify readiness first (preflights the prerequisites without starting anything):
+
+```bash
+deploy/scripts/full-reingest.sh --check
+```
+
+Then launch (long-running; run it detached):
+
 ```bash
 deploy/scripts/full-reingest.sh
 ```

@@ -52,6 +52,7 @@ secret_value() { podman secret inspect "$SECRET_NAME" --showsecret --format '{{.
 teardown() { podman rm -f "$REBUILD_CT" >/dev/null 2>&1 || true; }
 
 # --- Subcommands --------------------------------------------------------------------------------
+CHECK_ONLY=0
 case "${1:-}" in
   --status)
     for s in "${STAGES[@]}"; do
@@ -64,8 +65,9 @@ case "${1:-}" in
     podman volume rm "$REBUILD_VOL" >/dev/null 2>&1 || true
     rm -rf "$CKPT_DIR"
     log "reset: dropped checkpoints and volume $REBUILD_VOL"; exit 0 ;;
+  --check) CHECK_ONLY=1 ;;   # run preflight and exit, without starting the rebuild
   "") ;;
-  *) die "unknown option: $1 (use --status | --reset | --teardown)" ;;
+  *) die "unknown option: $1 (use --check | --status | --reset | --teardown)" ;;
 esac
 
 # --- Preflight ----------------------------------------------------------------------------------
@@ -83,6 +85,13 @@ FDC_MNT="$(podman volume inspect "$FDC_VOL" --format '{{.Mountpoint}}')"
 
 PW="$(secret_value)"; [ -n "$PW" ] || die "could not read secret $SECRET_NAME"
 mkdir -p "$CKPT_DIR"
+
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  log "preflight OK - corpus and FDC staged, secret and image present. Ready to run."
+  log "corpus: $CORPUS_VOL ($(du -sh "$CORPUS_MNT" 2>/dev/null | cut -f1)) -> $CORPUS_PATH in-container"
+  log "launch with: NUTRISCRAPE_CORPUS=$CORPUS_PATH deploy/scripts/full-reingest.sh"
+  exit 0
+fi
 
 # --- Start the rebuild Neo4j on its own volume (never the live one) ------------------------------
 if ! podman container exists "$REBUILD_CT"; then
