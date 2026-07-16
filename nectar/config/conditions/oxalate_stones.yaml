@@ -1,0 +1,15 @@
+# Recurrent calcium oxalate nephrolithiasis.
+# ILLUSTRATIVE placeholders, per serving. Dietitian review required.
+# Phase 1 handles oxalate at the attribute level (avoid high-oxalate foods). A quantitative
+# per-serving oxalate ceiling waits on oxalate being tracked as a :Compound with per-food content
+# (see the build scope, workstream C).
+disease_id: oxalate_stones
+name: Calcium Oxalate Nephrolithiasis
+icd10: N20.0
+guideline_org: AUA
+patterns: [nephrolithiasis]
+constraints:
+  - {nutrient: sodium,  type: restrict, unit: mg, max_per_serving: 600, hard_limit: 800, basis: "lower sodium reduces urinary calcium excretion", guideline_id: aua-sodium}
+  - {nutrient: protein, type: restrict, unit: g,  max_per_serving: 30, basis: "limit non-dairy animal protein, reduces stone risk", guideline_id: aua-protein}
+exclude_attributes:
+  - {attribute: high_oxalate, basis: "restrict high-oxalate foods (spinach, rhubarb, nuts, beets)", guideline_id: aua-oxalate}

@@ -149,6 +149,16 @@ def rules_for_conditions(factors: list[str],
                 value=_as_float(value), unit=_opt_str(c.get("unit")),
                 formula=f"{data.get('guideline_org', 'guideline')} disease rule",
                 guideline_id=_opt_str(c.get("guideline_id"))))
+        # Food-safety / food-avoidance exclusions a condition imposes (e.g. immunosuppression ->
+        # no raw animal protein, oxalate stones -> no high-oxalate foods). These are absolute
+        # `avoid` rules whose target is a FoodAttribute id; Stage 1 hard-filters variants carrying
+        # it. Unlike the nutrient rules above they need no per-serving number.
+        for ex in data.get("exclude_attributes", []) or []:
+            out.append(DerivedConstraint(
+                source_signal=f"condition {disease_id} (food safety)", direction="avoid",
+                target=str(ex.get("attribute", "unknown")), severity="absolute",
+                formula=f"{data.get('guideline_org', 'guideline')} food-safety exclusion",
+                guideline_id=_opt_str(ex.get("guideline_id"))))
     return out
 
 
@@ -177,7 +187,8 @@ def rules_for_medications(medications: list[str],
                 target=str(entry.get("target", "unknown")),
                 severity=str(entry.get("severity", "moderate")),
                 value=_as_float(entry.get("threshold")), unit=_opt_str(entry.get("unit")),
-                formula=str(entry.get("mechanism", "food-drug interaction"))))
+                formula=str(entry.get("mechanism", "food-drug interaction")),
+                guideline_id=_opt_str(entry.get("guideline_id"))))
     return out
 
 

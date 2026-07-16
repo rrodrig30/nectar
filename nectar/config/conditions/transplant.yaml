@@ -1,0 +1,18 @@
+# Solid organ transplant on maintenance immunosuppression.
+# ILLUSTRATIVE placeholders, per serving, apportioned from daily targets. Dietitian review required.
+# Two kinds of rule:
+#   constraints         - nutrient ceilings/targets scored in Stage 2 (calcineurin-inhibitor effects)
+#   exclude_attributes  - absolute Stage 1 food-safety exclusions imposed by immunosuppression
+disease_id: transplant
+name: Solid Organ Transplant
+icd10: Z94
+guideline_org: AST
+patterns: [immunosuppressed]
+constraints:
+  - {nutrient: sodium,     type: restrict, unit: mg, max_per_serving: 600, hard_limit: 800, basis: "CNI/steroid-related hypertension, ~2000 mg/day", guideline_id: ast-sodium}
+  - {nutrient: potassium,  type: restrict, unit: mg, max_per_serving: 700, hard_limit: 1000, safety_critical: true, basis: "calcineurin-inhibitor hyperkalemia", guideline_id: ast-potassium}
+  - {nutrient: magnesium,  type: target,   unit: mg, goal: 100, basis: "CNI renal magnesium wasting", guideline_id: ast-magnesium}
+exclude_attributes:
+  - {attribute: raw_animal_protein,  basis: "no raw/undercooked meat, poultry, fish, or eggs", guideline_id: ast-foodsafety}
+  - {attribute: unpasteurized_dairy, basis: "no unpasteurized dairy or juice", guideline_id: ast-foodsafety}
+  - {attribute: raw_sprouts,         basis: "no raw sprouts", guideline_id: ast-foodsafety}

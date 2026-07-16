@@ -1,0 +1,12 @@
+# Curated food-drug interactions for maintenance immunosuppressants.
+# Read by abstraction/derive.py rules_for_medications; each entry becomes an absolute `avoid`
+# constraint whose target is a FoodAttribute id (Stage 1 hard exclude). ILLUSTRATIVE curation
+# pending pharmacist/physician review; a named reviewer gates any promotion to live authority.
+#
+# The calcineurin inhibitors and mTOR inhibitors are CYP3A4 substrates: grapefruit (and related
+# citrus) furanocoumarins inhibit intestinal CYP3A4, raising drug exposure toward toxicity.
+interactions:
+  - {medication: tacrolimus,   target: furanocoumarin, direction: avoid, severity: absolute, mechanism: "grapefruit furanocoumarins inhibit intestinal CYP3A4, raising tacrolimus levels", guideline_id: ast-cyp3a4}
+  - {medication: cyclosporine, target: furanocoumarin, direction: avoid, severity: absolute, mechanism: "grapefruit furanocoumarins inhibit intestinal CYP3A4, raising cyclosporine levels", guideline_id: ast-cyp3a4}
+  - {medication: sirolimus,    target: furanocoumarin, direction: avoid, severity: absolute, mechanism: "grapefruit furanocoumarins inhibit intestinal CYP3A4, raising sirolimus levels", guideline_id: ast-cyp3a4}
+  - {medication: everolimus,   target: furanocoumarin, direction: avoid, severity: absolute, mechanism: "grapefruit furanocoumarins inhibit intestinal CYP3A4, raising everolimus levels", guideline_id: ast-cyp3a4}

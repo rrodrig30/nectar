@@ -3,8 +3,15 @@
 attributes:
   - {id: raw_animal_protein,  family: food_safety}
   - {id: unpasteurized_dairy, family: food_safety}
+  - {id: raw_sprouts,         family: food_safety}
   - {id: aged_fermented,      family: high_tyramine}
   - {id: alcohol_containing,  family: alcohol}
+  # Grapefruit and related citrus carry furanocoumarins that inhibit CYP3A4 (calcineurin- and
+  # mTOR-inhibitor interaction). Tag on foods, not preparation-resolved.
+  - {id: furanocoumarin,      family: cyp3a4_interaction}
+  # High-oxalate foods (spinach, rhubarb, nuts, beets) for calcium oxalate stone formers. Phase 1
+  # is an attribute flag; a quantitative oxalate compound with per-food content is workstream C.
+  - {id: high_oxalate,        family: oxalate}
 allergens:
   - {id: milk,     family: dairy,    derivatives: [whey, casein]}
   - {id: egg,      family: egg}
