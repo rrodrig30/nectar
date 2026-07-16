@@ -19,6 +19,18 @@ from typing import Any, Mapping
 from neo4j import Driver, GraphDatabase
 
 
+def split_ddl_statements(text: str) -> list[str]:
+    """Split a `;`-separated Cypher DDL file into individual statements.
+
+    `//` comments are stripped to end of line BEFORE splitting on `;`, because a comment may itself
+    contain a semicolon (e.g. `// unique per (recipe, food); without this ...`). Splitting first
+    would break the statement at that semicolon and leave the comment's tail polluting the next
+    statement, producing a syntax error. Empty statements are dropped.
+    """
+    without_comments = "\n".join(line.split("//", 1)[0] for line in text.splitlines())
+    return [statement.strip() for statement in without_comments.split(";") if statement.strip()]
+
+
 class GraphClient:
     """Typed wrapper over a `neo4j.Driver` session, scoped to the writer role.
 
@@ -101,18 +113,7 @@ class GraphClient:
         """Apply the contract DDL at `ddl_path` idempotently. The file is a `;`-separated list of
         Cypher statements (contract/schema/schema.cypher, DATA_CONTRACT.md Section 4). Every
         statement there is `IF NOT EXISTS`, so re-running this is always safe."""
-        text = ddl_path.read_text(encoding="utf-8")
-        for raw_statement in text.split(";"):
-            # Strip full-line `//` comments first: a comment line can share a `;`-delimited
-            # chunk with the real statement that follows it (e.g. a file header followed
-            # immediately by the first DDL line), so checking the whole chunk for a leading
-            # `//` before filtering would wrongly discard that statement.
-            lines = [
-                line for line in raw_statement.splitlines() if not line.strip().startswith("//")
-            ]
-            statement = "\n".join(lines).strip()
-            if not statement:
-                continue
+        for statement in split_ddl_statements(ddl_path.read_text(encoding="utf-8")):
             self.run(statement)
 
     def close(self) -> None:
