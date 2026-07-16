@@ -91,3 +91,28 @@ def test_best_match_threshold_is_inclusive_boundary() -> None:
     # at the boundary score itself, best_match must accept (score < threshold excludes, not <=)
     match = best_match("exact match text", candidates, threshold=exact_score)
     assert match is not None
+
+
+def test_head_term_beats_specialty_item_on_a_tie() -> None:
+    # The real bug: "potatoes" tied "Potatoes, raw, skin" and "Babyfood, potatoes, toddler" on
+    # token overlap and data_type; the head-term match must pick the base food.
+    raw = _candidate(1, "Potatoes, raw, skin", data_type="sr_legacy_food", score=2.67)
+    baby = _candidate(2, "Babyfood, potatoes, toddler", data_type="sr_legacy_food", score=2.67)
+    ranked = rank_candidates("potatoes", [baby, raw])  # baby first to prove order does not decide
+    assert ranked[0].candidate.fdc_id == raw.fdc_id
+    assert ranked[0].head_match == 1.0 and next(r for r in ranked if r.candidate.fdc_id == 2).head_match == 0.0
+
+
+def test_head_match_is_prefix_tolerant_for_plurals() -> None:
+    raw = _candidate(1, "Potatoes, raw, skin")
+    baby = _candidate(2, "Babyfood, potatoes, toddler")
+    ranked = rank_candidates("potato", [baby, raw])  # singular query, plural description
+    assert ranked[0].candidate.fdc_id == raw.fdc_id
+
+
+def test_raw_form_preferred_over_cooked_on_a_near_tie() -> None:
+    # Ingredients are cooked by the transform, so the base food should resolve raw.
+    raw = _candidate(1, "Carrots, raw")
+    baked = _candidate(2, "Carrots, cooked, boiled, drained, without salt")
+    ranked = rank_candidates("carrots", [baked, raw])
+    assert ranked[0].candidate.fdc_id == raw.fdc_id

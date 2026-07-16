@@ -26,11 +26,24 @@ DATA_TYPE_PREFERENCE: Final[dict[str, float]] = {
 DEFAULT_DATA_TYPE_PREFERENCE: Final[float] = 0.2
 
 # Relative weights in the composite score. Token overlap dominates because it is the direct
-# textual signal against the (normalized) query; data-type preference and FDC's own search
-# score are secondary tie-breakers.
-TOKEN_OVERLAP_WEIGHT: Final[float] = 0.55
-DATA_TYPE_WEIGHT: Final[float] = 0.30
-FDC_SCORE_WEIGHT: Final[float] = 0.15
+# textual signal against the (normalized) query; the head-term match distinguishes the base food
+# from a specialty item that merely mentions it; data-type preference and FDC's own search score
+# are secondary tie-breakers.
+TOKEN_OVERLAP_WEIGHT: Final[float] = 0.45
+HEAD_MATCH_WEIGHT: Final[float] = 0.25
+DATA_TYPE_WEIGHT: Final[float] = 0.20
+FDC_SCORE_WEIGHT: Final[float] = 0.10
+
+# FDC descriptions lead with the primary food ("Potatoes, raw, skin"). A description led by a
+# category word ("Babyfood, potatoes, toddler"; "Restaurant, ...") is a specialty item that only
+# mentions the queried food, not the base ingredient. Without this signal the two tie on token
+# overlap and data_type and the arbitrary tie-break can pick the specialty item.
+_MIN_HEAD_TOKEN: Final[int] = 3
+
+# Ingredients enter a recipe raw and are cooked by the four-channel transform, so the base food
+# should resolve raw; a pre-cooked candidate ("Potatoes, baked") would double-count the recipe's
+# own method. A small bonus, enough only to break a near-tie in favor of the raw form.
+RAW_PREFERENCE_BONUS: Final[float] = 0.04
 
 # FDC search scores are unbounded; this divisor puts typical top-hit scores near 1.0 for the
 # purpose of blending with the other two normalized [0, 1] signals. Illustrative, not calibrated.
@@ -49,6 +62,7 @@ class ScoredCandidate:
     score: float
     token_overlap: float
     data_type_preference: float
+    head_match: float = 0.0
 
 
 def _tokenize(text: str) -> set[str]:
@@ -68,6 +82,28 @@ def _data_type_preference(data_type: str) -> float:
     return DATA_TYPE_PREFERENCE.get(data_type.lower(), DEFAULT_DATA_TYPE_PREFERENCE)
 
 
+def _head_match(query_tokens: set[str], description: str) -> float:
+    """1.0 if the candidate's leading (primary-food) term matches a query token, else 0.0.
+
+    Matching is prefix-tolerant so simple singular/plural pairs align (query "potato" against a
+    "Potatoes, ..." description). Short leading tokens are ignored to avoid spurious matches.
+    """
+    head_tokens = _TOKEN_RE.findall(description.lower())
+    if not head_tokens:
+        return 0.0
+    head = head_tokens[0]
+    if len(head) < _MIN_HEAD_TOKEN:
+        return 0.0
+    for token in query_tokens:
+        if len(token) >= _MIN_HEAD_TOKEN and (head.startswith(token) or token.startswith(head)):
+            return 1.0
+    return 0.0
+
+
+def _raw_preference(candidate_tokens: set[str]) -> float:
+    return RAW_PREFERENCE_BONUS if "raw" in candidate_tokens else 0.0
+
+
 def _normalized_fdc_score(raw_score: float) -> float:
     if raw_score <= 0.0:
         return 0.0
@@ -84,13 +120,17 @@ def rank_candidates(query: str, candidates: list[FdcCandidate]) -> list[ScoredCa
     query_tokens = _tokenize(query)
     scored: list[ScoredCandidate] = []
     for candidate in candidates:
-        overlap = _token_overlap(query_tokens, _tokenize(candidate.description))
+        candidate_tokens = _tokenize(candidate.description)
+        overlap = _token_overlap(query_tokens, candidate_tokens)
+        head = _head_match(query_tokens, candidate.description)
         type_pref = _data_type_preference(candidate.data_type)
         fdc_component = _normalized_fdc_score(candidate.score)
         composite = (
             TOKEN_OVERLAP_WEIGHT * overlap
+            + HEAD_MATCH_WEIGHT * head
             + DATA_TYPE_WEIGHT * type_pref
             + FDC_SCORE_WEIGHT * fdc_component
+            + _raw_preference(candidate_tokens)
         )
         scored.append(
             ScoredCandidate(
@@ -98,6 +138,7 @@ def rank_candidates(query: str, candidates: list[FdcCandidate]) -> list[ScoredCa
                 score=composite,
                 token_overlap=overlap,
                 data_type_preference=type_pref,
+                head_match=head,
             )
         )
     return sorted(scored, key=lambda s: s.score, reverse=True)
