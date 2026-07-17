@@ -31,6 +31,9 @@ class MeasureTable:
     count_grams: dict[str, float] = field(default_factory=dict)
     default_density: float = 1.0
     default_count_g: float = 100.0
+    # A single resolved ingredient above this many grams is a quantity-parse artifact, not real data
+    # (see config/measures.yaml). resolve_mass_g returns 0 g for it so garbage cannot poison totals.
+    max_ingredient_mass_g: float = 20000.0
 
 
 def _section(cfg: dict[str, object], key: str) -> dict[str, float]:
@@ -54,11 +57,13 @@ def _default_value(cfg: dict[str, object], key: str, fallback: float) -> float:
 def load_measure_table(config_dir: str | Path | None = None) -> MeasureTable:
     """Load config/measures.yaml into a `MeasureTable`."""
     cfg = load_config("measures", config_dir)
+    ceiling = cfg.get("max_ingredient_mass_g")
     return MeasureTable(
         density_g_per_ml=_section(cfg, "volume_density_g_per_ml"),
         count_grams=_section(cfg, "count_grams"),
         default_density=_default_value(cfg, "volume_density_g_per_ml", 1.0),
         default_count_g=_default_value(cfg, "count_grams", 100.0),
+        max_ingredient_mass_g=float(ceiling) if isinstance(ceiling, (int, float)) else 20000.0,
     )
 
 
@@ -77,8 +82,18 @@ def resolve_mass_g(
     quantity: float | None, unit: str | None, description: str, table: MeasureTable
 ) -> float:
     """Grams for a parsed quantity/unit against a food description. Never raises: an unrecognized
-    unit falls through to the portion-weight path rather than dropping the ingredient."""
+    unit falls through to the portion-weight path rather than dropping the ingredient.
+
+    A result above `table.max_ingredient_mass_g` is a quantity-parse artifact (a noisy line parsing
+    to hundreds of thousands of something), not a real ingredient, so it resolves to 0 g: the garbage
+    contributes no mass or nutrients and cannot poison per-serving totals or dish-level statistics."""
     q = quantity if quantity is not None else 0.0
+    grams = _grams(q, unit, description, table)
+    return grams if grams <= table.max_ingredient_mass_g else 0.0
+
+
+def _grams(q: float, unit: str | None, description: str, table: MeasureTable) -> float:
+    """The unclamped gram resolution: mass unit direct, volume unit via density, else portion weight."""
     if unit:
         u = unit.strip()
         if u and units.is_mass_unit(u):

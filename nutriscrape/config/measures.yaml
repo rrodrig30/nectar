@@ -57,3 +57,10 @@ count_grams:
   avocado: 150
   jalapeno: 14
   mushroom: 18
+
+# Per-ingredient mass sanity ceiling (grams). A single recipe ingredient resolving above this is a
+# quantity-parse artifact (e.g. a noisy line parsing to 750,000 of something -> tens of thousands of
+# kg), not real data; the resolver returns 0 g for it so the garbage cannot poison per-serving totals
+# or dish-level statistics. ILLUSTRATIVE and tunable: >99.6% of resolved ingredients are <= 5 kg, and
+# a single ingredient over 20 kg is implausible for this home-recipe corpus. Pending review.
+max_ingredient_mass_g: 20000

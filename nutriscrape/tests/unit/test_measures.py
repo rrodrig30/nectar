@@ -58,3 +58,23 @@ def test_none_quantity_is_zero_mass():
 def test_unrecognized_unit_falls_through_to_count():
     # A weird unit does not drop the ingredient; it uses the portion path.
     assert resolve_mass_g(2, "pinch", "Egg, whole", _TABLE) == 100.0
+
+
+def test_implausible_mass_resolves_to_zero():
+    """A quantity-parse artifact (a noisy line parsing to hundreds of thousands of something) exceeds
+    the per-ingredient mass ceiling and resolves to 0 g, so it cannot poison per-serving totals or
+    dish statistics. Guards the 75,000 kg garbage that poisoned ~1% of dish potassium maxima."""
+    # count path: 750,000 * 100 g = 7.5e7 g, far over the 20 kg ceiling
+    assert resolve_mass_g(750000, None, "Pork, cooked", _TABLE) == 0.0
+    # mass unit path: 500 lb = ~226.8 kg, over the ceiling
+    assert resolve_mass_g(500, "lb", "Flour, wheat", _TABLE) == 0.0
+    # a large-but-plausible batch ingredient (2 kg flour) is kept, not dropped
+    assert resolve_mass_g(2000, "g", "Flour, wheat", _TABLE) == 2000.0
+
+
+def test_ceiling_is_config_driven():
+    """The ceiling comes from config (a lower one drops more), never a hardcoded literal."""
+    strict = MeasureTable(count_grams={"egg": 50.0}, default_count_g=100.0,
+                          max_ingredient_mass_g=1000.0)
+    assert resolve_mass_g(30, None, "Egg, whole, raw", strict) == 0.0   # 30*50=1500 > 1000
+    assert resolve_mass_g(10, None, "Egg, whole, raw", strict) == 500.0  # 10*50=500 <= 1000
