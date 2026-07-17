@@ -3,6 +3,8 @@ from typing import Any
 
 from nutriscrape.graph.readers import (
     has_foods,
+    iter_dish_variant_nutrients,
+    iter_recipes_for_materialize,
     read_all_raw_vectors,
     read_dish_variant_nutrients,
     read_raw_vector,
@@ -82,6 +84,64 @@ def test_read_dish_variant_nutrients_groups_by_dish_and_nutrient():
     assert out["dish:pot"]["potassium"] == [378.0, 964.0]
     assert out["dish:pot"]["sodium"] == [491.0, 491.0]
     assert out["dish:rice"]["potassium"] == [55.0]
+
+
+class _KeysetPagingClient:
+    """A fake that models the real keyset store: an id-page query returns the next window of ids
+    after `$after`, and the batch read returns the full rows for `$ids`. This exercises the
+    iterators' multi-page walk and termination, which a fixed-rows fake cannot (it would loop)."""
+
+    def __init__(self, rows_by_key: dict[str, dict[str, Any]], key: str) -> None:
+        self._rows_by_key = rows_by_key
+        self._key = key
+        self.pages = 0
+
+    def run(self, cypher: str, **params: Any) -> list[dict[str, Any]]:
+        if "$after" in cypher:                       # keyset id page
+            self.pages += 1
+            after = params["after"]
+            limit = params["limit"]
+            ids = sorted(k for k in self._rows_by_key if k > after)[:limit]
+            return [{self._key: k} for k in ids]
+        if "$ids" in cypher:                         # batch read for a page of ids
+            return [self._rows_by_key[k] for k in params["ids"] if k in self._rows_by_key]
+        raise AssertionError(f"unexpected query: {cypher[:60]}")
+
+
+def test_iter_recipes_for_materialize_walks_pages_and_terminates():
+    rows_by_key = {
+        f"r{i:03d}": {
+            "recipe_id": f"r{i:03d}", "servings": 2.0,
+            "foods": [{"fdc_id": "170026", "description": "Potatoes, raw", "mass_g": 100.0,
+                       "method": "boil", "cut_class": "whole", "water_ratio": None,
+                       "liquid_retained_frac": 1.0, "time_min": None, "temp_c": None,
+                       "raw": [{"nutrient_id": "potassium", "amount": 425.0}]}],
+        }
+        for i in range(5)
+    }
+    client = _KeysetPagingClient(rows_by_key, key="recipe_id")
+    batches = list(iter_recipes_for_materialize(client, batch_size=2))
+    seen = [r.recipe_id for batch in batches for r in batch]
+    assert seen == ["r000", "r001", "r002", "r003", "r004"]   # every recipe, once, in order
+    assert client.pages == 3                                   # 2 + 2 + 1, last short page stops
+
+
+def test_iter_dish_variant_nutrients_walks_pages_and_terminates():
+    rows_by_key = {
+        f"d{i:03d}": {"dish_id": f"d{i:03d}", "nutrient_id": "potassium", "amounts": [float(i)]}
+        for i in range(5)
+    }
+    client = _KeysetPagingClient(rows_by_key, key="dish_id")
+    batches = list(iter_dish_variant_nutrients(client, batch_size=2))
+    seen = sorted(d for batch in batches for d in batch)
+    assert seen == ["d000", "d001", "d002", "d003", "d004"]
+    assert client.pages == 3
+
+
+def test_iter_recipes_for_materialize_empty_graph_yields_nothing():
+    client = _KeysetPagingClient({}, key="recipe_id")
+    assert list(iter_recipes_for_materialize(client, batch_size=2)) == []
+    assert client.pages == 1                                   # one empty page, then stop
 
 
 class _CapturingReadClient:

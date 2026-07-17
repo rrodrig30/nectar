@@ -7,6 +7,8 @@ their own cooked HAS_NUTRIENT vectors, and that a non-draining method (bake) RET
 that boiling-and-draining leaches away. Ranking those versions within a dish is NECTAR's job.
 See PDD Section 6, SDD Section 8, DATA_CONTRACT Section 3.1.
 """
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from nutriscrape.pipeline import _run_materialize_with_client
@@ -38,6 +40,11 @@ class _FakeGraph:
     def run_write(self, cypher: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         self.writes.append((cypher, params))
         return []
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        # The real client buffers writes into one transaction; the fake records them directly.
+        yield
 
 
 def _variants(client: _FakeGraph) -> dict[str, bool]:

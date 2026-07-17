@@ -30,8 +30,8 @@ data scale, not code: pointing acquisition at the full RecipeNLG export or a lar
   the four-channel transform. So a baked-potato variant retains potassium a boiled-and-drained one
   leaches away, and NECTAR can rank versions within a dish accordingly. `run_materialize` then
   materializes per-dish nutrient distribution statistics on each `:Dish` across its versions
-  (contract Section 5) via `graph/readers.read_dish_variant_nutrients` and
-  `graph/writers.write_dish_nutrient_stats`.
+  (contract Section 5) via `graph/readers.iter_dish_variant_nutrients` (paged by dish_id so the read
+  stays bounded at corpus scale) and `graph/writers.write_dish_nutrient_stats`.
 - The only genuinely-remaining item is data scale: obtaining the full RecipeNLG export or a large
   curated URL list to run acquisition over, rather than the bundled 7-recipe sample.
 
@@ -69,10 +69,10 @@ from nutriscrape.graph.readers import (
     MaterializeIngredient,
     MaterializeRecipe,
     has_foods,
+    iter_dish_variant_nutrients,
+    iter_recipes_for_materialize,
     read_all_raw_vectors,
-    read_dish_variant_nutrients,
     read_recipe_inputs,
-    read_recipes_for_materialize,
     search_foods,
 )
 from nutriscrape.graph.schema import apply_schema
@@ -763,6 +763,13 @@ def ingest_batch(recipes: Sequence[RawRecipe], use_local: bool) -> int:
 # per member; a few hundred per commit amortizes fsync without an unbounded transaction.
 _CLUSTER_PERSIST_BATCH = 500
 
+# Recipes / dishes read (and written) per page in the corpus-scale materialize and dish-stats
+# stages. Bounding the page bounds both the Neo4j read transaction and Python memory, so neither
+# holds the whole corpus (an unbounded read blows the transaction memory ceiling at ~2M recipes).
+# Env-overridable for tuning against host memory without a code change.
+_MATERIALIZE_PAGE = int(os.getenv("NUTRISCRAPE_MATERIALIZE_PAGE", "2000"))
+_DISH_STATS_PAGE = int(os.getenv("NUTRISCRAPE_DISH_STATS_PAGE", "5000"))
+
 
 def _cluster_and_persist(
     recipe_inputs: Sequence[RecipeInput], client: GraphClient, judge: Judge | None = None
@@ -928,23 +935,31 @@ def _materialize_variants_for_recipe(
 def _run_materialize_with_client(client: GraphClient) -> int:
     """Read ingested recipes and write their alternative-preparation variants. Split from
     `run_materialize` so the read -> generate -> compose -> persist path is testable with a fake
-    GraphClient (no live Neo4j)."""
-    recipes = read_recipes_for_materialize(client)
-    if not recipes:
+    GraphClient (no live Neo4j). Streams the corpus in recipe_id pages (`iter_recipes_for_materialize`)
+    so neither the read transaction nor Python memory holds the whole corpus at once."""
+    transforms = load_transforms(default_config_dir())
+    coverage = _load_method_coverage()
+    nutrient_vocab = _load_nutrient_vocab()
+    total = 0
+    recipe_count = 0
+    for batch in iter_recipes_for_materialize(client, batch_size=_MATERIALIZE_PAGE):
+        with client.batch():
+            for recipe in batch:
+                total += _materialize_variants_for_recipe(
+                    recipe, transforms, coverage, nutrient_vocab, client
+                )
+                recipe_count += 1
+        logger.info(
+            "materialize: %d alternative variant(s) across %d recipe(s) so far", total, recipe_count
+        )
+    if recipe_count == 0:
         logger.warning(
             "materialize: no ingested recipes with raw nutrient vectors found; run `ingest` first. "
             "Nothing to materialize this run."
         )
         return 0
-    transforms = load_transforms(default_config_dir())
-    coverage = _load_method_coverage()
-    nutrient_vocab = _load_nutrient_vocab()
-    total = sum(
-        _materialize_variants_for_recipe(recipe, transforms, coverage, nutrient_vocab, client)
-        for recipe in recipes
-    )
     logger.info(
-        "materialize: wrote %d alternative variant(s) across %d recipe(s)", total, len(recipes)
+        "materialize: wrote %d alternative variant(s) across %d recipe(s)", total, recipe_count
     )
     return total
 
@@ -954,18 +969,24 @@ def _run_dish_stats_with_client(client: GraphClient) -> int:
     dish, summarize every nutrient across all of its variants and persist the distribution on the
     `:Dish`. Needs `cluster` (dishes) and `ingest`/`materialize` (variants) to have run. Split out so
     the read -> summarize -> persist path is testable with a fake GraphClient."""
-    by_dish = read_dish_variant_nutrients(client)
-    if not by_dish:
+    written = 0
+    for batch in iter_dish_variant_nutrients(client, batch_size=_DISH_STATS_PAGE):
+        with client.batch():
+            for dish_id, nutrients in batch.items():
+                stats = {
+                    nutrient_id: distribution(values) for nutrient_id, values in nutrients.items()
+                }
+                write_dish_nutrient_stats(client, dish_id=dish_id, stats=stats)
+                written += 1
+        logger.info("dish-stats: wrote distribution statistics on %d dish(es) so far", written)
+    if written == 0:
         logger.warning(
             "materialize: no dish variants with cooked nutrients found; run `cluster` (and "
             "`ingest`) first. No dish statistics written this run."
         )
         return 0
-    for dish_id, nutrients in by_dish.items():
-        stats = {nutrient_id: distribution(values) for nutrient_id, values in nutrients.items()}
-        write_dish_nutrient_stats(client, dish_id=dish_id, stats=stats)
-    logger.info("materialize: wrote nutrient distribution statistics on %d dish(es)", len(by_dish))
-    return len(by_dish)
+    logger.info("materialize: wrote nutrient distribution statistics on %d dish(es)", written)
+    return written
 
 
 def run_dish_stats() -> None:

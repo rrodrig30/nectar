@@ -5,6 +5,8 @@ dish's versions and captures the write. A potato dish with a drained version (37
 versions (964 mg K) gets its potassium spread materialized on the :Dish, so NECTAR can see the
 version range without re-reading every variant. See DATA_CONTRACT Section 5.
 """
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from nutriscrape.pipeline import _run_dish_stats_with_client
@@ -28,6 +30,11 @@ class _FakeGraph:
     def run_write(self, cypher: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         self.writes.append((cypher, params))
         return []
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        # The real client buffers writes into one transaction; the fake records them directly.
+        yield
 
 
 def test_dish_nutrient_distribution_is_materialized():

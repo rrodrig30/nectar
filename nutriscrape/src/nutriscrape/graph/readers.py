@@ -8,6 +8,7 @@ versions of one dish, which means re-reading what `run_ingest` wrote and rebuild
 from __future__ import annotations
 import re
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from nectar_contract import names
@@ -72,9 +73,11 @@ class MaterializeRecipe:
 
 
 # Reads each recipe's foods with the CONTAINS mass, the referenced :Preparation params, and the
-# food's intrinsic HAS_NUTRIENT_RAW per-100g vector, so re-cooking needs no FDC round trip.
-_READ_MATERIALIZE = f"""
-MATCH (r:{names.RECIPE})-[c:{names.CONTAINS}]->(f:{names.FOOD})
+# food's intrinsic HAS_NUTRIENT_RAW per-100g vector, so re-cooking needs no FDC round trip. The batch
+# form restricts to a page of recipe_ids so a single transaction never holds the whole corpus (each
+# food occurrence inlines its full raw vector, so the unbounded read blows the transaction memory
+# ceiling at corpus scale, no matter the heap). `iter_recipes_for_materialize` pages by recipe_id.
+_MATERIALIZE_BODY = f"""
 OPTIONAL MATCH (p:{names.PREPARATION} {{prep_id: c.prep_id}})
 OPTIONAL MATCH (f)-[hr:{names.HAS_NUTRIENT_RAW}]->(rn:{names.NUTRIENT})
 WITH r, f, c, p, collect({{nutrient_id: rn.nutrient_id, amount: hr.amount_per_100g}}) AS raw
@@ -87,77 +90,180 @@ WITH r, collect({{
 RETURN r.recipe_id AS recipe_id, r.servings AS servings, foods
 """
 
+_READ_MATERIALIZE = f"""
+MATCH (r:{names.RECIPE})-[c:{names.CONTAINS}]->(f:{names.FOOD})
+{_MATERIALIZE_BODY}
+"""
+
+_READ_MATERIALIZE_BATCH = f"""
+MATCH (r:{names.RECIPE})-[c:{names.CONTAINS}]->(f:{names.FOOD})
+WHERE r.recipe_id IN $ids
+{_MATERIALIZE_BODY}
+"""
+
+# Keyset page over recipe_ids (backed by the recipe_id uniqueness index): efficient at any offset,
+# constant memory, unlike SKIP which is O(offset) per page.
+_PAGE_RECIPE_IDS = f"""
+MATCH (r:{names.RECIPE})
+WHERE r.recipe_id > $after
+RETURN r.recipe_id AS recipe_id
+ORDER BY r.recipe_id
+LIMIT $limit
+"""
+
+
+def _materialize_recipe_from_row(row: dict[str, object]) -> MaterializeRecipe | None:
+    """Rebuild one `MaterializeRecipe` from a materialize read row, or None if it has no re-cookable
+    ingredient. Foods with no persisted raw vector are dropped (there is nothing to re-cook)."""
+    ingredients: list[MaterializeIngredient] = []
+    for entry in row["foods"]:  # type: ignore[attr-defined]
+        fdc_id = entry.get("fdc_id")
+        if fdc_id is None:
+            continue
+        raw_per_100g = {
+            str(item["nutrient_id"]): float(item["amount"])
+            for item in entry.get("raw", [])
+            if item.get("nutrient_id") is not None and item.get("amount") is not None
+        }
+        if not raw_per_100g:
+            continue
+        mass = entry.get("mass_g")
+        prep = Preparation(
+            method=str(entry.get("method") or "raw"),
+            cut_class=str(entry.get("cut_class") or "whole"),
+            water_ratio=entry.get("water_ratio"),
+            liquid_retained_frac=(
+                float(entry["liquid_retained_frac"])
+                if entry.get("liquid_retained_frac") is not None else 1.0
+            ),
+            time_min=entry.get("time_min"),
+            temp_c=entry.get("temp_c"),
+        )
+        ingredients.append(MaterializeIngredient(
+            fdc_id=str(fdc_id),
+            description=str(entry.get("description") or ""),
+            mass_g=float(mass) if mass is not None else 0.0,
+            prep=prep,
+            raw_per_100g=raw_per_100g,
+        ))
+    if not ingredients:
+        return None
+    servings = row.get("servings")
+    return MaterializeRecipe(
+        recipe_id=str(row["recipe_id"]),
+        servings=float(servings) if servings else 1.0,  # type: ignore[arg-type]
+        ingredients=ingredients,
+    )
+
 
 def read_recipes_for_materialize(client: GraphClient) -> list[MaterializeRecipe]:
-    """Rebuild each ingested recipe with its as-authored preparations and food raw vectors, so
-    `run_materialize` can generate alternative-method variants without a live FDC call. Foods with no
-    persisted raw vector are dropped (there is nothing to re-cook)."""
-    rows = client.run(_READ_MATERIALIZE)
+    """Rebuild every ingested recipe with its as-authored preparations and food raw vectors in one
+    read. Correct for small graphs (tests, integration); at corpus scale use
+    `iter_recipes_for_materialize`, which pages so no single transaction holds the whole corpus."""
     recipes: list[MaterializeRecipe] = []
-    for row in rows:
-        ingredients: list[MaterializeIngredient] = []
-        for entry in row["foods"]:
-            fdc_id = entry.get("fdc_id")
-            if fdc_id is None:
-                continue
-            raw_per_100g = {
-                str(item["nutrient_id"]): float(item["amount"])
-                for item in entry.get("raw", [])
-                if item.get("nutrient_id") is not None and item.get("amount") is not None
-            }
-            if not raw_per_100g:
-                continue
-            mass = entry.get("mass_g")
-            prep = Preparation(
-                method=str(entry.get("method") or "raw"),
-                cut_class=str(entry.get("cut_class") or "whole"),
-                water_ratio=entry.get("water_ratio"),
-                liquid_retained_frac=(
-                    float(entry["liquid_retained_frac"])
-                    if entry.get("liquid_retained_frac") is not None else 1.0
-                ),
-                time_min=entry.get("time_min"),
-                temp_c=entry.get("temp_c"),
-            )
-            ingredients.append(MaterializeIngredient(
-                fdc_id=str(fdc_id),
-                description=str(entry.get("description") or ""),
-                mass_g=float(mass) if mass is not None else 0.0,
-                prep=prep,
-                raw_per_100g=raw_per_100g,
-            ))
-        if not ingredients:
-            continue
-        servings = row.get("servings")
-        recipes.append(MaterializeRecipe(
-            recipe_id=str(row["recipe_id"]),
-            servings=float(servings) if servings else 1.0,
-            ingredients=ingredients,
-        ))
+    for row in client.run(_READ_MATERIALIZE):
+        recipe = _materialize_recipe_from_row(row)
+        if recipe is not None:
+            recipes.append(recipe)
     return recipes
+
+
+def iter_recipes_for_materialize(
+    client: GraphClient, batch_size: int = 2000
+) -> Iterator[list[MaterializeRecipe]]:
+    """Page ingested recipes for materialize by recipe_id, yielding one bounded batch of
+    `MaterializeRecipe` at a time. Each batch reads only its page of recipe_ids (`WHERE r.recipe_id
+    IN $ids`), so the transaction memory stays bounded regardless of corpus size. Recipes with no
+    re-cookable ingredient are dropped, so a batch may yield fewer than `batch_size` recipes (or
+    none), but paging always advances by the full page of ids."""
+    after = ""
+    while True:
+        id_rows = client.run(_PAGE_RECIPE_IDS, after=after, limit=batch_size)
+        ids = [str(r["recipe_id"]) for r in id_rows if r.get("recipe_id") is not None]
+        if not ids:
+            break
+        after = ids[-1]
+        rows = client.run(_READ_MATERIALIZE_BATCH, ids=ids)
+        batch = [
+            recipe for recipe in (_materialize_recipe_from_row(row) for row in rows)
+            if recipe is not None
+        ]
+        if batch:
+            yield batch
+        if len(id_rows) < batch_size:
+            break
 
 
 # Every cooked HAS_NUTRIENT amount across every variant of every recipe in a dish, grouped by dish
 # and nutrient, so the distribution across the dish's versions can be summarized (contract Section 5).
-_READ_DISH_NUTRIENTS = f"""
-MATCH (d:{names.DISH})-[:{names.HAS_VERSION}]->(:{names.RECIPE})
+# The batch form restricts to a page of dish_ids; the unbounded read collects every variant amount
+# across all ~1M dishes into one transaction, which blows the memory ceiling at corpus scale.
+_DISH_NUTRIENTS_BODY = f"""
+MATCH (d)-[:{names.HAS_VERSION}]->(:{names.RECIPE})
       -[:{names.HAS_VARIANT}]->(:{names.RECIPE_VARIANT})-[h:{names.HAS_NUTRIENT}]->(n:{names.NUTRIENT})
 RETURN d.dish_id AS dish_id, n.nutrient_id AS nutrient_id,
        collect(h.amount_per_serving) AS amounts
 """
 
+_READ_DISH_NUTRIENTS = f"""
+MATCH (d:{names.DISH})
+{_DISH_NUTRIENTS_BODY}
+"""
 
-def read_dish_variant_nutrients(client: GraphClient) -> dict[str, dict[str, list[float]]]:
-    """dish_id -> nutrient_id -> the per-serving amounts across all of the dish's variants. Only
-    dishes that already have versioned variants with cooked nutrients appear."""
-    rows = client.run(_READ_DISH_NUTRIENTS)
+_READ_DISH_NUTRIENTS_BATCH = f"""
+MATCH (d:{names.DISH})
+WHERE d.dish_id IN $ids
+{_DISH_NUTRIENTS_BODY}
+"""
+
+# Keyset page over dish_ids (backed by the dish_id uniqueness index).
+_PAGE_DISH_IDS = f"""
+MATCH (d:{names.DISH})
+WHERE d.dish_id > $after
+RETURN d.dish_id AS dish_id
+ORDER BY d.dish_id
+LIMIT $limit
+"""
+
+
+def _dish_nutrients_from_rows(
+    rows: list[dict[str, object]]
+) -> dict[str, dict[str, list[float]]]:
+    """Group dish-nutrient read rows into dish_id -> nutrient_id -> per-serving amounts."""
     out: dict[str, dict[str, list[float]]] = {}
     for row in rows:
-        amounts = [float(a) for a in row["amounts"] if a is not None]
+        amounts = [float(a) for a in row["amounts"] if a is not None]  # type: ignore[attr-defined]
         if not amounts:
             continue
         out.setdefault(str(row["dish_id"]), {})[str(row["nutrient_id"])] = amounts
     return out
+
+
+def read_dish_variant_nutrients(client: GraphClient) -> dict[str, dict[str, list[float]]]:
+    """dish_id -> nutrient_id -> the per-serving amounts across all of the dish's variants, in one
+    read. Correct for small graphs (tests, integration); at corpus scale use
+    `iter_dish_variant_nutrients`, which pages by dish_id so the transaction stays bounded."""
+    return _dish_nutrients_from_rows(client.run(_READ_DISH_NUTRIENTS))
+
+
+def iter_dish_variant_nutrients(
+    client: GraphClient, batch_size: int = 5000
+) -> Iterator[dict[str, dict[str, list[float]]]]:
+    """Page clustered dishes by dish_id, yielding one bounded batch of dish_id -> nutrient_id ->
+    amounts at a time. Each batch reads only its page of dish_ids, so the transaction memory stays
+    bounded regardless of how many dishes the corpus produced."""
+    after = ""
+    while True:
+        id_rows = client.run(_PAGE_DISH_IDS, after=after, limit=batch_size)
+        ids = [str(r["dish_id"]) for r in id_rows if r.get("dish_id") is not None]
+        if not ids:
+            break
+        after = ids[-1]
+        batch = _dish_nutrients_from_rows(client.run(_READ_DISH_NUTRIENTS_BATCH, ids=ids))
+        if batch:
+            yield batch
+        if len(id_rows) < batch_size:
+            break
 
 
 # ----------------------------------------------------------------------- local food resolution
@@ -259,5 +365,6 @@ def has_foods(client: GraphClient) -> bool:
 
 
 __all__ = ["read_recipe_inputs", "read_recipes_for_materialize", "read_dish_variant_nutrients",
+           "iter_recipes_for_materialize", "iter_dish_variant_nutrients",
            "search_foods", "read_raw_vector", "read_all_raw_vectors", "has_foods",
            "MaterializeRecipe", "MaterializeIngredient"]
