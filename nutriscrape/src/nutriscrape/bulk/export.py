@@ -71,13 +71,15 @@ def _nutrient_units() -> dict[str, str]:
 
 
 class _Writers:
-    """Open csv.writer per file, header written once. Closed together via the context manager."""
+    """Open csv.writer per file, header written once. Closed together via the context manager. The
+    `files` map (name -> header) defaults to the as-authored `_FILES`; the bulk-materialize path
+    passes its own alt-variant file set."""
 
-    def __init__(self, out_dir: Path) -> None:
+    def __init__(self, out_dir: Path, files: dict[str, list[str]] | None = None) -> None:
         out_dir.mkdir(parents=True, exist_ok=True)
         self._handles: dict[str, TextIO] = {}
         self.writers: dict[str, Any] = {}
-        for name, header in _FILES.items():
+        for name, header in (files or _FILES).items():
             handle = (out_dir / f"{name}.csv").open("w", encoding="utf-8", newline="")
             writer = csv.writer(handle)
             writer.writerow(header)
@@ -92,6 +94,57 @@ class _Writers:
             handle.close()
 
 
+@dataclass
+class ResolvedIngredient:
+    """One parsed-and-resolved ingredient of a corpus recipe: its FDC identity, canonical gram mass,
+    as-authored preparation, and raw per-100g vector (None if the resolved food carries none). The
+    shared unit both the as-authored export and the bulk-materialize alt-variant export build on."""
+    fdc_id: str
+    description: str
+    mass_g: float
+    prep: Preparation
+    raw_vec: dict[str, float] | None
+    parse_confidence: float
+
+
+def resolve_recipe_ingredients(
+    raw: RawRecipe, index: FoodIndex, stats: ExportStats | None = None
+) -> list[ResolvedIngredient]:
+    """Parse each ingredient line, resolve it against the in-memory FDC index, link its preparation
+    step, and read its raw vector. The one derivation both the as-authored (`export_recipe`) and the
+    alternative-variant (bulk/materialize.py) exporters share, so they resolve identically. Never
+    touches Neo4j. Unresolved ingredients are dropped (and counted on `stats` when given)."""
+    ingredients = [parse_ingredient_basic(line) for line in raw.ingredient_lines]
+    refs = [ing.food for ing in ingredients]
+    preps = basic_preparation(raw.preparation_steps, refs)
+    prep_by_ref = {p.applies_to[0]: p for p in preps if p.applies_to}
+    out: list[ResolvedIngredient] = []
+    for ing in ingredients:
+        resolved = index.resolve(ing.food)
+        if resolved is None:
+            if stats is not None:
+                stats.ingredients_unresolved += 1
+            continue
+        mass_g = resolve_mass_g_default(ing.quantity, ing.unit, resolved.description)
+        out.append(ResolvedIngredient(
+            fdc_id=resolved.fdc_id, description=resolved.description, mass_g=mass_g,
+            prep=_to_prep(prep_by_ref.get(ing.food)),
+            raw_vec=index.raw_vector(resolved.fdc_id),
+            parse_confidence=ing.parse_confidence))
+    return out
+
+
+def ingredient_facts(resolved: list[ResolvedIngredient]) -> list[IngredientFacts]:
+    """The cookable IngredientFacts (four-channel transform inputs) for the resolved ingredients that
+    carry a raw vector. Ingredients with no raw vector are dropped (nothing to cook)."""
+    return [
+        IngredientFacts(
+            fdc_id=r.fdc_id, food_classes=tuple(classify_food(r.description)), mass_g=r.mass_g,
+            prep=r.prep, raw_per_100g=r.raw_vec, is_liquid=is_cooking_liquid(r.description))
+        for r in resolved if r.raw_vec
+    ]
+
+
 def export_recipe(
     raw: RawRecipe,
     index: FoodIndex,
@@ -102,32 +155,15 @@ def export_recipe(
 ) -> None:
     """Resolve + cook one recipe and append its rows to the CSVs. Mirrors `_ingest_recipe`'s compute
     (parse -> resolve -> canonical mass -> four-channel cooked vector) but writes CSV, not Neo4j."""
-    ingredients = [parse_ingredient_basic(line) for line in raw.ingredient_lines]
-    refs = [ing.food for ing in ingredients]
-    preps = basic_preparation(raw.preparation_steps, refs)
-    prep_by_ref = {p.applies_to[0]: p for p in preps if p.applies_to}
-
-    facts: list[IngredientFacts] = []
+    resolved = resolve_recipe_ingredients(raw, index, stats)
+    facts = ingredient_facts(resolved)
     contains_rows: list[list[object]] = []
     prep_rows: list[list[object]] = []
-    for ing in ingredients:
-        resolved = index.resolve(ing.food)
-        if resolved is None:
-            stats.ingredients_unresolved += 1
-            continue
-        # Real gram resolution (counts via portion weight), matching the ingest path. Never raises.
-        mass_g = resolve_mass_g_default(ing.quantity, ing.unit, resolved.description)
-        prep = _to_prep(prep_by_ref.get(ing.food))
-        prep_id = f"{raw.recipe_id}:{resolved.fdc_id}"
-        raw_vec = index.raw_vector(resolved.fdc_id)
-        prep_rows.append([prep_id, prep.method, prep.cut_class, prep.water_ratio,
-                          prep.liquid_retained_frac, prep.time_min, prep.temp_c])
-        contains_rows.append([raw.recipe_id, resolved.fdc_id, mass_g, prep_id])
-        if raw_vec:
-            facts.append(IngredientFacts(
-                fdc_id=resolved.fdc_id, food_classes=tuple(classify_food(resolved.description)),
-                mass_g=mass_g, prep=prep, raw_per_100g=raw_vec,
-                is_liquid=is_cooking_liquid(resolved.description)))
+    for r in resolved:
+        prep_id = f"{raw.recipe_id}:{r.fdc_id}"
+        prep_rows.append([prep_id, r.prep.method, r.prep.cut_class, r.prep.water_ratio,
+                          r.prep.liquid_retained_frac, r.prep.time_min, r.prep.temp_c])
+        contains_rows.append([raw.recipe_id, r.fdc_id, r.mass_g, prep_id])
 
     if not facts:
         stats.recipes_skipped += 1
@@ -137,7 +173,7 @@ def export_recipe(
     sf = serving_facts(facts, cooked, raw.servings)
     variant_id = f"{raw.recipe_id}:variant:0:as_authored"
     writers["recipes"].writerow([raw.recipe_id, raw.title, raw.source_id, raw.license,
-                                 raw.servings, min((i.parse_confidence for i in ingredients),
+                                 raw.servings, min((r.parse_confidence for r in resolved),
                                                    default=0.5)])
     for row in prep_rows:
         writers["preparations"].writerow(row)
@@ -193,11 +229,15 @@ def _chunked(items: Iterator[RawRecipe], size: int) -> Iterator[list[RawRecipe]]
         yield chunk
 
 
-def _concatenate_shards(out: Path, shard_dirs: list[Path]) -> None:
-    """Merge each shard's per-kind CSV into one final CSV under `out` (header once, then data)."""
-    for name in _FILES:
+def _concatenate_shards(
+    out: Path, shard_dirs: list[Path], files: dict[str, list[str]] | None = None
+) -> None:
+    """Merge each shard's per-kind CSV into one final CSV under `out` (header once, then data). The
+    `files` map defaults to the as-authored `_FILES`; bulk-materialize passes its alt-variant set."""
+    files = files or _FILES
+    for name in files:
         with (out / f"{name}.csv").open("w", encoding="utf-8", newline="") as dest:
-            dest.write(",".join(_FILES[name]) + "\r\n")
+            dest.write(",".join(files[name]) + "\r\n")
             for shard in shard_dirs:
                 src = shard / f"{name}.csv"
                 if not src.is_file():

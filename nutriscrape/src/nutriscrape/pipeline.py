@@ -117,6 +117,7 @@ from nutriscrape.nutrition.compose import (
 from nutriscrape.nutrition.distribution import distribution
 from nutriscrape.nutrition.measures import resolve_mass_g_default
 from nutriscrape.nutrition.transform import Preparation
+from nutriscrape.nutrition.variants import MAX_EAGER_ALT_METHODS, alternative_methods
 from nutriscrape.resolution.fdc_bulk import iter_bulk_foods
 from nutriscrape.resolution.fdc_client import FdcClient, FdcConfigError, FdcRequestError
 from nutriscrape.resolution.matcher import best_match, resolve_food
@@ -324,6 +325,32 @@ def run_bulk_load() -> None:
     """LOAD CSV the exported CSVs (in Neo4j's import dir) into the graph, single-threaded so the
     shared :Nutrient/:Food nodes never see concurrent writers. Run after fdc-import + knowledge."""
     from nutriscrape.bulk.load import run_bulk_load as _load
+
+    with GraphClient.from_env() as client:
+        _load(client)
+
+
+def run_bulk_materialize_export() -> None:
+    """Corpus-scale alternative-preparation variant materialization, compute half: re-derive each
+    recipe from the corpus in memory (no Neo4j) and write the alt-variant CSVs for
+    `bulk-materialize-load`. The scale replacement for the transactional `materialize` stage, which
+    is too slow at 2.2M recipes (single-threaded, per-statement round trips). Needs FDC_BULK_DIR;
+    writes to BULK_OUT_DIR (default /import). Corpus is NUTRISCRAPE_CORPUS or the bundled sample."""
+    fdc_dir = os.environ.get("FDC_BULK_DIR")
+    if not fdc_dir:
+        logger.warning(
+            "bulk-materialize-export: FDC_BULK_DIR is not set; nothing to resolve against. Skipping."
+        )
+        return
+    from nutriscrape.bulk.materialize import run_bulk_materialize_export as _export
+
+    _export(_sample_corpus_path(), fdc_dir, os.environ.get("BULK_OUT_DIR", "/import"))
+
+
+def run_bulk_materialize_load() -> None:
+    """LOAD CSV the exported alt-variant CSVs (in Neo4j's import dir) into the graph, single-threaded
+    so the shared :Nutrient nodes never see concurrent writers. Run after bulk-load + cluster."""
+    from nutriscrape.bulk.materialize import run_bulk_materialize_load as _load
 
     with GraphClient.from_env() as client:
         _load(client)
@@ -840,7 +867,7 @@ def run_cluster() -> None:
 # ----------------------------------------------------------------------------------- materialize
 
 
-MAX_ALT_VARIANTS = 3  # bounded, culinarily-sane eager set per recipe (PDD Section 6)
+MAX_ALT_VARIANTS = MAX_EAGER_ALT_METHODS  # bounded eager set per recipe (PDD Section 6)
 
 
 def _load_method_coverage() -> dict[str, list[str]]:
@@ -850,15 +877,12 @@ def _load_method_coverage() -> dict[str, list[str]]:
 
 
 def _alternative_methods(recipe: MaterializeRecipe, coverage: dict[str, list[str]]) -> list[str]:
-    """The bounded set of alternative cooking methods for a recipe: the union of its food classes'
-    covered methods, minus the methods the as-authored preparation already uses."""
-    classes: set[str] = set()
-    authored: set[str] = set()
-    for ingredient in recipe.ingredients:
-        classes.update(classify_food(ingredient.description))
-        authored.add(ingredient.prep.method)
-    candidates = {method for food_class in classes for method in coverage.get(food_class, [])}
-    return sorted(candidates - authored)[:MAX_ALT_VARIANTS]
+    """The bounded set of alternative cooking methods for a recipe. Thin wrapper over the shared
+    `nutrition.variants.alternative_methods` so the transactional and bulk materialize paths select
+    the identical set."""
+    classes = {c for ingredient in recipe.ingredients for c in classify_food(ingredient.description)}
+    authored = {ingredient.prep.method for ingredient in recipe.ingredients}
+    return alternative_methods(classes, authored, coverage, cap=MAX_ALT_VARIANTS)
 
 
 def _facts_under_method(ingredient: MaterializeIngredient, method: str) -> IngredientFacts:

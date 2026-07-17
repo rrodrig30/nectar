@@ -14,7 +14,8 @@ from nutriscrape.common.config import load_env_file
 
 STAGES = (
     "schema", "knowledge", "fdc-import", "ingest", "bulk-export", "bulk-load",
-    "cluster", "materialize", "dish-stats", "run-all", "flow",
+    "cluster", "materialize", "bulk-materialize-export", "bulk-materialize-load",
+    "dish-stats", "run-all", "flow",
 )
 
 # Stage name -> the pipeline function that implements it. `run-all` is not a key here; it is the
@@ -28,6 +29,8 @@ _STAGE_TO_FUNC_NAME: dict[str, str] = {
     "bulk-load": "run_bulk_load",
     "cluster": "run_cluster",
     "materialize": "run_materialize",
+    "bulk-materialize-export": "run_bulk_materialize_export",
+    "bulk-materialize-load": "run_bulk_materialize_load",
     "dish-stats": "run_dish_stats",
 }
 

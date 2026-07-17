@@ -47,7 +47,7 @@ CKPT_DIR="${CKPT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/nectar/reingest}"
 # batch inputs and stalls; the single-process `ingest` is steady but ~10 recipes/s). Overrides:
 #   NUTRISCRAPE_STAGES="schema knowledge fdc-import ingest cluster materialize dish-stats"   (single-process)
 #   NUTRISCRAPE_STAGES="flow dish-stats"                                                     (parallel flow)
-read -r -a STAGES <<< "${NUTRISCRAPE_STAGES:-schema knowledge fdc-import bulk-export bulk-load cluster materialize dish-stats}"
+read -r -a STAGES <<< "${NUTRISCRAPE_STAGES:-schema knowledge fdc-import bulk-export bulk-load cluster bulk-materialize-export bulk-materialize-load dish-stats}"
 
 log()  { printf '\033[1;32m[reingest]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[reingest]\033[0m %s\n' "$*" >&2; }
