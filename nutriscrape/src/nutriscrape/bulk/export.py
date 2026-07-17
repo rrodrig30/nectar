@@ -22,11 +22,15 @@ from nutriscrape.acquisition.adapters.datasets import RecipeNlgAdapter
 from nutriscrape.acquisition.parse import basic_preparation, parse_ingredient_basic
 from nutriscrape.bulk.food_index import FoodIndex
 from nutriscrape.common.config import load_config
-from nutriscrape.common.units import UnitError
 from nutriscrape.extraction.preparation import ParsedPreparation
 from nutriscrape.knowledge.loaders import TransformCoeff, load_transforms
-from nutriscrape.nutrition.compose import IngredientFacts, compose_serving_vector
-from nutriscrape.nutrition.normalize import to_canonical
+from nutriscrape.nutrition.compose import (
+    IngredientFacts,
+    compose_serving_vector,
+    is_cooking_liquid,
+    serving_facts,
+)
+from nutriscrape.nutrition.measures import resolve_mass_g_default
 from nutriscrape.nutrition.transform import Preparation
 from nutriscrape.resolution.nutrient_map import classify_food
 
@@ -35,7 +39,8 @@ logger = logging.getLogger(__name__)
 # One CSV per node/relationship kind. Headers double as LOAD CSV column names (bulk/load.py).
 _FILES: dict[str, list[str]] = {
     "recipes": ["recipe_id", "title", "source_id", "license", "servings", "confidence"],
-    "variants": ["variant_id", "recipe_id", "confidence"],
+    "variants": ["variant_id", "recipe_id", "confidence",
+                 "serving_mass_g", "energy_kcal", "fluid_ml"],
     "preparations": ["prep_id", "method", "cut_class", "water_ratio",
                      "liquid_retained_frac", "time_min", "temp_c"],
     "contains": ["recipe_id", "fdc_id", "raw_mass_g", "prep_id"],
@@ -110,26 +115,26 @@ def export_recipe(
         if resolved is None:
             stats.ingredients_unresolved += 1
             continue
-        try:
-            canonical = to_canonical(ing.quantity or 0.0, ing.unit or "g")
-        except UnitError:
-            continue
+        # Real gram resolution (counts via portion weight), matching the ingest path. Never raises.
+        mass_g = resolve_mass_g_default(ing.quantity, ing.unit, resolved.description)
         prep = _to_prep(prep_by_ref.get(ing.food))
         prep_id = f"{raw.recipe_id}:{resolved.fdc_id}"
         raw_vec = index.raw_vector(resolved.fdc_id)
         prep_rows.append([prep_id, prep.method, prep.cut_class, prep.water_ratio,
                           prep.liquid_retained_frac, prep.time_min, prep.temp_c])
-        contains_rows.append([raw.recipe_id, resolved.fdc_id, canonical.value, prep_id])
+        contains_rows.append([raw.recipe_id, resolved.fdc_id, mass_g, prep_id])
         if raw_vec:
             facts.append(IngredientFacts(
                 fdc_id=resolved.fdc_id, food_classes=tuple(classify_food(resolved.description)),
-                mass_g=canonical.value, prep=prep, raw_per_100g=raw_vec))
+                mass_g=mass_g, prep=prep, raw_per_100g=raw_vec,
+                is_liquid=is_cooking_liquid(resolved.description)))
 
     if not facts:
         stats.recipes_skipped += 1
         return
 
     cooked = compose_serving_vector(facts, transforms, raw.servings)
+    sf = serving_facts(facts, cooked, raw.servings)
     variant_id = f"{raw.recipe_id}:variant:0:as_authored"
     writers["recipes"].writerow([raw.recipe_id, raw.title, raw.source_id, raw.license,
                                  raw.servings, min((i.parse_confidence for i in ingredients),
@@ -138,8 +143,13 @@ def export_recipe(
         writers["preparations"].writerow(row)
     for row in contains_rows:
         writers["contains"].writerow(row)
-    writers["variants"].writerow([variant_id, raw.recipe_id,
-                                  min((n.confidence for n in cooked.values()), default=0.5)])
+    writers["variants"].writerow([
+        variant_id, raw.recipe_id,
+        min((n.confidence for n in cooked.values()), default=0.5),
+        sf.serving_mass_g,
+        "" if sf.energy_kcal is None else sf.energy_kcal,
+        "" if sf.fluid_ml is None else sf.fluid_ml,
+    ])
     for nutrient_id, nutrient in cooked.items():
         writers["has_nutrient"].writerow([variant_id, nutrient_id, nutrient.amount,
                                           units.get(nutrient_id, ""), nutrient.source,

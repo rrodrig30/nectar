@@ -50,7 +50,10 @@ LOAD CSV WITH HEADERS FROM 'file:///variants.csv' AS row
 CALL {{ WITH row
   MATCH (r:Recipe {{recipe_id: row.recipe_id}})
   MERGE (v:RecipeVariant {{variant_id: row.variant_id}})
-  SET v.is_as_authored = true, v.confidence = toFloat(row.confidence)
+  SET v.is_as_authored = true, v.confidence = toFloat(row.confidence),
+      v.serving_mass_g = toFloat(row.serving_mass_g),
+      v.energy_kcal = CASE WHEN row.energy_kcal = '' THEN null ELSE toFloat(row.energy_kcal) END,
+      v.fluid_ml = CASE WHEN row.fluid_ml = '' THEN null ELSE toFloat(row.fluid_ml) END
   MERGE (r)-[:HAS_VARIANT]->(v)
 }} IN TRANSACTIONS OF {_BATCH} ROWS
 """
