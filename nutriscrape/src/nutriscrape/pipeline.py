@@ -759,6 +759,11 @@ def ingest_batch(recipes: Sequence[RawRecipe], use_local: bool) -> int:
 # --------------------------------------------------------------------------------------- cluster
 
 
+# Dishes written per transaction in the cluster persist. Each dish is a merge_dish plus one edge
+# per member; a few hundred per commit amortizes fsync without an unbounded transaction.
+_CLUSTER_PERSIST_BATCH = 500
+
+
 def _cluster_and_persist(
     recipe_inputs: Sequence[RecipeInput], client: GraphClient, judge: Judge | None = None
 ) -> int:
@@ -773,19 +778,25 @@ def _cluster_and_persist(
     """
     fingerprints = [make_fingerprint(recipe) for recipe in recipe_inputs]
     title_by_id = {recipe.recipe_id: recipe.title for recipe in recipe_inputs}
-    clusters = cluster_fingerprints(fingerprints, judge=judge)
+    clusters = list(cluster_fingerprints(fingerprints, judge=judge))
 
-    for one_cluster in clusters:
-        canonical_name = title_by_id.get(one_cluster.members[0], one_cluster.members[0])
-        cluster_confidence = min(one_cluster.membership_confidence.values(), default=1.0)
-        merge_dish(
-            client,
-            dish_id=one_cluster.dish_id,
-            canonical_name=canonical_name,
-            cluster_confidence=cluster_confidence,
-        )
-        for recipe_id in one_cluster.members:
-            link_dish_recipe(client, dish_id=one_cluster.dish_id, recipe_id=recipe_id)
+    # Persist in batches: each dish is a merge_dish plus one link_dish_recipe per member, so a
+    # per-dish transaction makes fsync-per-commit the ceiling (~20 dishes/s at corpus scale).
+    # Grouping many dishes into one transaction amortizes the commit, exactly as the ingest path
+    # does per recipe. Statements run in buffered order, so each dish is merged before its edges.
+    for start in range(0, len(clusters), _CLUSTER_PERSIST_BATCH):
+        with client.batch():
+            for one_cluster in clusters[start:start + _CLUSTER_PERSIST_BATCH]:
+                canonical_name = title_by_id.get(one_cluster.members[0], one_cluster.members[0])
+                cluster_confidence = min(one_cluster.membership_confidence.values(), default=1.0)
+                merge_dish(
+                    client,
+                    dish_id=one_cluster.dish_id,
+                    canonical_name=canonical_name,
+                    cluster_confidence=cluster_confidence,
+                )
+                for recipe_id in one_cluster.members:
+                    link_dish_recipe(client, dish_id=one_cluster.dish_id, recipe_id=recipe_id)
 
     return len(clusters)
 

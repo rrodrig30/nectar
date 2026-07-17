@@ -5,6 +5,8 @@ near-identical boiled-potato recipes cluster into one :Dish with two HAS_VERSION
 distinct recipe forms its own dish. This closes the ingest -> cluster loop that gives NECTAR a
 queryable Dish -> Recipe -> RecipeVariant -> HAS_NUTRIENT path. See SDD Section 5, PDD Section 7.
 """
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from nutriscrape.pipeline import _run_cluster_with_client
@@ -32,6 +34,12 @@ class _FakeGraph:
     def run_write(self, cypher: str, params: dict[str, Any]) -> list[dict[str, Any]]:
         self.writes.append((cypher, params))
         return []
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        # The real client buffers writes into one transaction; the fake records them directly, so
+        # this is a no-op context that still exercises the batched persist path.
+        yield
 
 
 def _has_version_links(client: _FakeGraph) -> dict[str, set[str]]:
