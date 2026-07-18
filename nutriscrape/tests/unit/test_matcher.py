@@ -116,3 +116,22 @@ def test_raw_form_preferred_over_cooked_on_a_near_tie() -> None:
     baked = _candidate(2, "Carrots, cooked, boiled, drained, without salt")
     ranked = rank_candidates("carrots", [baked, raw])
     assert ranked[0].candidate.fdc_id == raw.fdc_id
+
+
+def test_verbose_canonical_food_beats_short_specialty_mock() -> None:
+    # The corpus bug: bare "chicken" resolved to "Chicken, meatless" (a short description that beat
+    # the verbose canonical food on Jaccard). Coverage + the specialty penalty must pick real chicken.
+    real = _candidate(1, "Chicken, broilers or fryers, breast, meat only, raw")
+    meatless = _candidate(2, "Chicken, meatless")
+    ranked = rank_candidates("chicken", [meatless, real])  # mock first to prove order does not decide
+    assert ranked[0].candidate.fdc_id == real.fdc_id
+    assert ranked[0].token_overlap == 1.0                  # verbose description covers the query fully
+
+
+def test_specialty_mock_demoted_only_when_query_did_not_ask_for_it() -> None:
+    real = _candidate(1, "Bacon, cured, pan-fried")
+    meatless = _candidate(2, "Bacon, meatless")
+    # bare "bacon" -> the real cured food, not the meatless analog
+    assert rank_candidates("bacon", [meatless, real])[0].candidate.fdc_id == real.fdc_id
+    # but an explicit "meatless bacon" -> the meatless analog (the penalty does not apply)
+    assert rank_candidates("meatless bacon", [real, meatless])[0].candidate.fdc_id == meatless.fdc_id

@@ -45,6 +45,16 @@ _MIN_HEAD_TOKEN: Final[int] = 3
 # own method. A small bonus, enough only to break a near-tie in favor of the raw form.
 RAW_PREFERENCE_BONUS: Final[float] = 0.04
 
+# Non-equivalent specialty products whose short FDC descriptions ("Bacon, meatless", "Babyfood,
+# ...") outscore the verbose canonical food on text alone. A recipe calling for "bacon" almost never
+# means the meatless analog, yet the analog was resolved 64k+ times across the corpus, understating
+# real composition. Demote such a candidate UNLESS the query itself asked for it (so an explicit
+# "meatless bacon" is unaffected). The penalty clears the ~0.9 a same-food tie reaches.
+SPECIALTY_TERMS: Final[frozenset[str]] = frozenset(
+    {"meatless", "imitation", "substitute", "babyfood"}
+)
+SPECIALTY_PENALTY: Final[float] = 0.25
+
 # FDC search scores are unbounded; this divisor puts typical top-hit scores near 1.0 for the
 # purpose of blending with the other two normalized [0, 1] signals. Illustrative, not calibrated.
 FDC_SCORE_NORMALIZER: Final[float] = 100.0
@@ -70,12 +80,25 @@ def _tokenize(text: str) -> set[str]:
 
 
 def _token_overlap(query_tokens: set[str], candidate_tokens: set[str]) -> float:
-    """Jaccard similarity between query and candidate description tokens."""
+    """Fraction of the query's tokens the candidate covers (recall of the query).
+
+    This replaced Jaccard, which divided by the union and so penalized a verbose canonical FDC
+    description ("Chicken, broilers or fryers, breast, meat only, raw") relative to a short specialty
+    one ("Chicken, meatless") that merely shares the word. Recall does not penalize the extra
+    descriptive tokens of the real food, so the base ingredient is not lost; the head-term match,
+    raw preference, and specialty penalty then decide among candidates that fully cover the query.
+    """
     if not query_tokens or not candidate_tokens:
         return 0.0
-    intersection = query_tokens & candidate_tokens
-    union = query_tokens | candidate_tokens
-    return len(intersection) / len(union)
+    return len(query_tokens & candidate_tokens) / len(query_tokens)
+
+
+def _specialty_penalty(query_tokens: set[str], candidate_tokens: set[str]) -> float:
+    """Demote a non-equivalent specialty product the query did not ask for (see SPECIALTY_TERMS).
+    Zero when the specialty term is also in the query, so an explicit "meatless bacon" is kept."""
+    if (SPECIALTY_TERMS & candidate_tokens) - query_tokens:
+        return -SPECIALTY_PENALTY
+    return 0.0
 
 
 def _data_type_preference(data_type: str) -> float:
@@ -131,6 +154,7 @@ def rank_candidates(query: str, candidates: list[FdcCandidate]) -> list[ScoredCa
             + DATA_TYPE_WEIGHT * type_pref
             + FDC_SCORE_WEIGHT * fdc_component
             + _raw_preference(candidate_tokens)
+            + _specialty_penalty(query_tokens, candidate_tokens)
         )
         scored.append(
             ScoredCandidate(
