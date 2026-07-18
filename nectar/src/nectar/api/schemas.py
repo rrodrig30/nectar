@@ -168,6 +168,28 @@ class DishSummaryOut(BaseModel):
     canonical_name: str | None = None
 
 
+class DishStatOut(BaseModel):
+    """One nutrient's per-serving spread across a dish's versions (contract Section 5), for the
+    recipe browser. `minimum`/`maximum` bound the version range; `median` is the sort key. Every
+    value is calculated, not measured (the browser labels the spread accordingly)."""
+
+    nutrient: str
+    minimum: float | None = None
+    median: float | None = None
+    maximum: float | None = None
+    count: int | None = None
+
+
+class BrowseDishOut(BaseModel):
+    """One recipe-browser hit: a dish plus its per-nutrient version spread, so the clinician can see
+    the potassium/sodium/energy range across the dish's versions while browsing for meal ideas that
+    meet a patient's needs, before committing to a full `/recommend`."""
+
+    dish_id: str
+    canonical_name: str | None = None
+    stats: list[DishStatOut] = []
+
+
 class ConditionOut(BaseModel):
     """One `:Condition` from the knowledge base, for the condition selector."""
 

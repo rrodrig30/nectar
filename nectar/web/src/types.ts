@@ -60,6 +60,20 @@ export interface DishSummary {
   canonical_name: string | null;
 }
 
+export interface DishStat {
+  nutrient: string;
+  minimum: number | null;
+  median: number | null;
+  maximum: number | null;
+  count: number | null;
+}
+
+export interface BrowseDish {
+  dish_id: string;
+  canonical_name: string | null;
+  stats: DishStat[];
+}
+
 export interface Condition {
   condition_id: string;
   name: string | null;
@@ -147,6 +161,41 @@ export interface RecommendResponse {
   rankings: DishRanking[];
   conflicts: ConflictNote[];
   gaps: string[];
+  boundary: string;
+}
+
+// --- Meal plan (plan/mealplan.py, /plan/week) ---
+
+export interface Meal {
+  variant_id: string;
+  dish_id: string;
+  nutrients: Record<string, number>;
+}
+
+export interface MaintainRule {
+  nutrient: string;
+  band: number;
+}
+
+export interface PlanRequest {
+  pool: Meal[];
+  energy_min: number;
+  energy_max: number;
+  fluid_max_ml: number | null;
+  protein_min: number | null;
+  maintain: MaintainRule[];
+  days: number;
+  meals_per_day: number;
+}
+
+export interface DayPlan {
+  meals: Meal[];
+  totals: Record<string, number>;
+}
+
+export interface PlanResponse {
+  days: DayPlan[];
+  violations: string[];
   boundary: string;
 }
 

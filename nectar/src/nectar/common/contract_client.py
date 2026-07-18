@@ -14,6 +14,7 @@ labels and relationship types are fixed identifiers pinned by the contract, not 
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, Self
@@ -82,11 +83,53 @@ RETURN v.variant_id AS variant_id,
        head(collect(DISTINCT p.method)) AS method
 """
 
+_LUCENE_STRIP = re.compile(r"[^A-Za-z0-9 ]+")
+
+
+def _lucene_query(raw: str) -> str:
+    """Build a parser-safe Lucene query from a free-text dish-name search. Strips to alphanumerics
+    and spaces, then quotes each remaining term, so reserved words (AND/OR/NOT/TO) and metacharacters
+    cannot break the full-text query. Space-joined quoted terms match on any term (the default OR).
+    Empty when nothing usable remains. Mirrors the NutriScrape food-search sanitizer."""
+    terms = _LUCENE_STRIP.sub(" ", raw).split()
+    return " ".join(f'"{term}"' for term in terms)
+
+
 _SEARCH_DISHES = f"""
 MATCH (d:{DISH})
 WHERE toLower(d.canonical_name) CONTAINS toLower($q)
 RETURN d.dish_id AS dish_id, d.canonical_name AS canonical_name
 LIMIT $limit
+"""
+
+# Recipe browser: a full-text lookup on dish names (dish_name index) yields a bounded candidate pool,
+# which is then refined by per-serving nutrient ceilings and sorted. A dish qualifies against a
+# ceiling when at least one of its versions is at or below it (stat_min <= max), i.e. a preparable
+# version meets the patient's need. `$ceilings` is a list of {nutrient, max}; empty means no filter.
+# The whole-corpus alternative (CONTAINS scan + ORDER BY over ~1M dishes) is 7-10 s, so this stays on
+# the indexed path. Sort by a nutrient's median ascending when `$sort` is a nutrient_id, else by
+# full-text relevance. Returns each dish's full per-nutrient stat spread for display.
+_BROWSE_DISHES = """
+CALL db.index.fulltext.queryNodes('dish_name', $q, {limit: $pool}) YIELD node AS d, score
+WHERE d.stat_nutrient_ids IS NOT NULL
+  // only dishes with real computed nutrition: a version with energy > 0. Excludes dishes whose
+  // foods did not resolve (all-zero stats), which would otherwise sort first as "lowest".
+  AND any(i IN range(0, size(d.stat_nutrient_ids) - 1)
+          WHERE d.stat_nutrient_ids[i] = 'energy' AND d.stat_max[i] > 0)
+  AND all(c IN $ceilings WHERE
+        any(i IN range(0, size(d.stat_nutrient_ids) - 1)
+            WHERE d.stat_nutrient_ids[i] = c.nutrient AND d.stat_min[i] <= c.max))
+WITH d, score,
+     CASE WHEN $sort = '' THEN null
+          ELSE head([i IN range(0, size(d.stat_nutrient_ids) - 1)
+                     WHERE d.stat_nutrient_ids[i] = $sort | d.stat_median[i]])
+     END AS sortval
+RETURN d.dish_id AS dish_id, d.canonical_name AS canonical_name,
+       [i IN range(0, size(d.stat_nutrient_ids) - 1) |
+          {nutrient: d.stat_nutrient_ids[i], minimum: d.stat_min[i],
+           median: d.stat_median[i], maximum: d.stat_max[i], count: d.stat_count[i]}] AS stats
+ORDER BY (sortval IS NULL) ASC, sortval ASC, score DESC, canonical_name ASC
+SKIP $offset LIMIT $limit
 """
 
 _LIST_CONDITIONS = f"""
@@ -357,6 +400,34 @@ class ContractClient:
         dish-picker. Read-only, bounded by `limit`; `LIMIT` lets the scan terminate early rather
         than sorting the whole corpus. Returns `{dish_id, canonical_name}` rows."""
         return self._read(_SEARCH_DISHES, q=query, limit=limit)
+
+    def browse_dishes(
+        self,
+        query: str,
+        ceilings: list[dict[str, Any]] | None = None,
+        sort: str = "",
+        limit: int = 30,
+        offset: int = 0,
+        pool: int = 1500,
+    ) -> list[dict[str, Any]]:
+        """Recipe browser (SDD Section 4 / frontend backlog): dishes matching the full-text name
+        `query`, refined by per-serving nutrient `ceilings` (`[{"nutrient": id, "max": mg}]`, matched
+        when a version is at or below the ceiling), sorted by `sort` (a nutrient_id, ascending median)
+        or by name relevance. A name term is required so the query stays on the indexed path rather
+        than scanning ~1M dishes. Returns `{dish_id, canonical_name, stats}` where stats is the
+        per-nutrient spread. Returns `[]` for a blank query rather than scanning the whole corpus."""
+        lucene = _lucene_query(query)
+        if not lucene:
+            return []
+        return self._read(
+            _BROWSE_DISHES,
+            q=lucene,
+            ceilings=ceilings or [],
+            sort=sort,
+            limit=limit,
+            offset=offset,
+            pool=pool,
+        )
 
     def list_conditions(self) -> list[dict[str, Any]]:
         """All `:Condition` nodes in the knowledge base (`{condition_id, name}`), so the UI can

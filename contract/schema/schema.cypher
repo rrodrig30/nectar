@@ -18,6 +18,10 @@ CREATE INDEX variant_fluid    IF NOT EXISTS FOR (v:RecipeVariant) ON (v.fluid_ml
 // imported :Food graph (NutriScrape fdc-import + ingest local resolver) without an FDC API call.
 CREATE FULLTEXT INDEX food_fulltext IF NOT EXISTS FOR (f:Food) ON EACH [f.description];
 
+// full-text index on dish names, for NECTAR's recipe browser (name lookup over ~1M dishes without a
+// full-corpus CONTAINS scan; the browser then refines the bounded candidate pool by nutrient ceilings).
+CREATE FULLTEXT INDEX dish_name IF NOT EXISTS FOR (d:Dish) ON EACH [d.canonical_name];
+
 CREATE VECTOR INDEX recipe_embed IF NOT EXISTS
 FOR (r:Recipe) ON (r.embedding)
 OPTIONS { indexConfig: { `vector.dimensions`: 384, `vector.similarity_function`: 'cosine' } };

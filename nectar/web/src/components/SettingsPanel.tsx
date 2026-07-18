@@ -3,13 +3,14 @@ import { api, ApiError } from '../api';
 import type { Backend, Settings, SettingsUpdate, TempScale, UnitSystem } from '../types';
 
 interface Props {
-  onClose: () => void;
+  onClose?: () => void; // modal mode when provided; omit for the inline nav section
 }
 
 // The operator surface (SDD Section 7): LLM backend, model, hyperparameters, and display defaults.
 // Overrides apply to the running server and take effect on the next request; the config file stays
 // the source of the default (Reset returns to it). No clinical threshold is a setting; API keys are
-// environment secrets and are never entered here.
+// environment secrets and are never entered here. Renders as a modal when `onClose` is given, or
+// inline as a section (in the side nav) when it is not.
 export function SettingsPanel({ onClose }: Props): JSX.Element {
   const [loaded, setLoaded] = useState<Settings | null>(null);
   const [form, setForm] = useState<Settings | null>(null);
@@ -69,12 +70,13 @@ export function SettingsPanel({ onClose }: Props): JSX.Element {
   const isOverridden = (f: string): boolean => (loaded?.overridden ?? []).includes(f);
   const changed = Object.keys(diff()).length > 0;
 
-  return (
-    <div className="modal-scrim" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+  const content = (
+    <>
         <div className="modal-head">
           <h2>Settings</h2>
-          <button className="btn-ghost btn-sm" onClick={onClose} aria-label="Close">&times;</button>
+          {onClose && (
+            <button className="btn-ghost btn-sm" onClick={onClose} aria-label="Close">&times;</button>
+          )}
         </div>
         <p className="card-hint">
           Runtime configuration for this server. Changes take effect on the next request; the config
@@ -157,6 +159,16 @@ export function SettingsPanel({ onClose }: Props): JSX.Element {
             </div>
           </>
         )}
+    </>
+  );
+
+  if (!onClose) {
+    return <div className="card settings-inline">{content}</div>;
+  }
+  return (
+    <div className="modal-scrim" role="dialog" aria-modal="true" aria-label="Settings" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        {content}
       </div>
     </div>
   );

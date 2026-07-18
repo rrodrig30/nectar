@@ -6,10 +6,13 @@ into response models. No clinical literal or scoring rule lives here (invariants
 """
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from nectar.api.deps import get_contract_client
 from nectar.api.schemas import (
+    BrowseDishOut,
     ConditionOut,
     DishSummaryOut,
     GuidelineOut,
@@ -29,6 +32,44 @@ def get_dishes_search(
 ) -> list[DishSummaryOut]:
     """Dishes whose canonical_name contains `q`, bounded by `limit`. Read-only."""
     return [DishSummaryOut(**row) for row in client.search_dishes(q, limit)]
+
+
+def _parse_ceilings(raw: list[str]) -> list[dict[str, Any]]:
+    """Parse `nutrient:max` filter strings (e.g. `potassium:400`) into `{nutrient, max}` maps.
+    A malformed or non-numeric entry is a client error, not silently dropped."""
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        nutrient, _, value = item.partition(":")
+        nutrient = nutrient.strip()
+        if not nutrient or not value.strip():
+            raise HTTPException(status_code=422, detail=f"bad ceiling {item!r}; use nutrient:max")
+        try:
+            out.append({"nutrient": nutrient, "max": float(value)})
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail=f"non-numeric ceiling in {item!r}"
+            ) from exc
+    return out
+
+
+@router.get("/dishes/browse", response_model=list[BrowseDishOut])
+def get_dishes_browse(
+    q: str = Query(min_length=1, description="Full-text dish-name query (required)"),
+    max: list[str] = Query(  # noqa: A002 - matches the query-string name the UI sends
+        default_factory=list,
+        description="Per-serving nutrient ceilings as nutrient:mg (e.g. potassium:400)",
+    ),
+    sort: str = Query(default="", description="nutrient_id to sort by (ascending median), or blank"),
+    limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    client: ContractClient = Depends(get_contract_client),
+) -> list[BrowseDishOut]:
+    """Browse dishes for meal ideas that meet a patient's needs: full-text name match refined by
+    per-serving nutrient ceilings (a dish qualifies when a version is at or below each ceiling) and
+    sorted by a nutrient or by name relevance. Read-only; a name term is required so the query uses
+    the dish_name full-text index instead of scanning the whole corpus."""
+    rows = client.browse_dishes(q, _parse_ceilings(max), sort, limit, offset)
+    return [BrowseDishOut(**row) for row in rows]
 
 
 @router.get("/conditions", response_model=list[ConditionOut])

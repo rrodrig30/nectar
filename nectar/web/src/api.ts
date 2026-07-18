@@ -5,6 +5,7 @@
 import type {
   AskRequest,
   AskResponse,
+  BrowseDish,
   ClinicalSnapshot,
   Condition,
   ConfirmResponse,
@@ -13,6 +14,8 @@ import type {
   DishSummary,
   Guideline,
   NutrientInfo,
+  PlanRequest,
+  PlanResponse,
   RecipeDetail,
   RecommendResponse,
   Settings,
@@ -90,6 +93,33 @@ export const api = {
     return request<DishSummary[]>(
       `/dishes/search?q=${encodeURIComponent(q)}&limit=${limit}`,
     );
+  },
+
+  /**
+   * GET /dishes/browse - the recipe browser. Full-text name match `q`, refined by per-serving
+   * nutrient `ceilings` (`{nutrient: max_mg}`, a dish qualifies when a version is at/under it),
+   * sorted by `sort` (a nutrient_id, ascending median) or name relevance. Returns dishes with their
+   * per-nutrient version spread.
+   */
+  browseDishes(
+    q: string,
+    ceilings: Record<string, number> = {},
+    sort = '',
+    limit = 30,
+    offset = 0,
+  ): Promise<BrowseDish[]> {
+    const params = new URLSearchParams();
+    params.set('q', q);
+    for (const [nutrient, mg] of Object.entries(ceilings)) params.append('max', `${nutrient}:${mg}`);
+    if (sort) params.set('sort', sort);
+    params.set('limit', String(limit));
+    params.set('offset', String(offset));
+    return request<BrowseDish[]>(`/dishes/browse?${params.toString()}`);
+  },
+
+  /** POST /plan/week - a weekly meal plan over a supplied admissible meal pool with envelopes. */
+  planWeek(req: PlanRequest): Promise<PlanResponse> {
+    return postJson<PlanResponse>('/plan/week', req);
   },
 
   /** GET /conditions - every condition in the knowledge base, for the selector. */
