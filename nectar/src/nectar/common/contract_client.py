@@ -126,6 +126,10 @@ WITH d, score,
           ELSE head([i IN range(0, size(d.stat_nutrient_ids) - 1)
                      WHERE d.stat_nutrient_ids[i] = $sort | d.stat_median[i]])
      END AS sortval
+// When sorting ascending by a nutrient, drop dishes whose median is 0: a dish with real energy but
+// zero of a nutrient it should carry is under-resolved (a no-quantity ingredient contributed no
+// mass), not genuinely lowest. Keeps the "lowest X" view on dishes with real, small values.
+WHERE $sort = '' OR (sortval IS NOT NULL AND sortval > 0)
 RETURN d.dish_id AS dish_id, d.canonical_name AS canonical_name,
        [i IN range(0, size(d.stat_nutrient_ids) - 1) |
           {nutrient: d.stat_nutrient_ids[i], minimum: d.stat_min[i],
