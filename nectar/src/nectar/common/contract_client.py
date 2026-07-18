@@ -112,13 +112,15 @@ LIMIT $limit
 _BROWSE_DISHES = """
 CALL db.index.fulltext.queryNodes('dish_name', $q, {limit: $pool}) YIELD node AS d, score
 WHERE d.stat_nutrient_ids IS NOT NULL
-  // only dishes with real computed nutrition: a version with energy > 0. Excludes dishes whose
-  // foods did not resolve (all-zero stats), which would otherwise sort first as "lowest".
+  // Filter and sort on the median (the typical version), not the min. The corpus has partially
+  // resolved versions whose nutrients read ~0; using the min would let one such version satisfy a
+  // low ceiling and sort first as a false "low-nutrient" hit. The median is robust to those. The
+  // energy-median gate drops dishes with no real computed nutrition (a typically-unresolved dish).
   AND any(i IN range(0, size(d.stat_nutrient_ids) - 1)
-          WHERE d.stat_nutrient_ids[i] = 'energy' AND d.stat_max[i] > 0)
+          WHERE d.stat_nutrient_ids[i] = 'energy' AND d.stat_median[i] > 0)
   AND all(c IN $ceilings WHERE
         any(i IN range(0, size(d.stat_nutrient_ids) - 1)
-            WHERE d.stat_nutrient_ids[i] = c.nutrient AND d.stat_min[i] <= c.max))
+            WHERE d.stat_nutrient_ids[i] = c.nutrient AND d.stat_median[i] <= c.max))
 WITH d, score,
      CASE WHEN $sort = '' THEN null
           ELSE head([i IN range(0, size(d.stat_nutrient_ids) - 1)
