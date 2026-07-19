@@ -34,7 +34,7 @@ volume_density_g_per_ml:
   salt: 1.22
 
 count_grams:
-  default: 100
+  default: 100           # a no-quantity MAIN food ("chicken") is treated as ~one portion (100 g)
   egg white: 33
   egg yolk: 17
   egg: 50
@@ -57,6 +57,47 @@ count_grams:
   avocado: 150
   jalapeno: 14
   mushroom: 18
+  # Seasonings, leavening, and condiments: the "one unit / to taste" default (~1 tsp in grams) when
+  # a line carries no quantity ("salt to taste", "pepper"), so it is not sized as a 100 g main food.
+  # Critical for SODIUM safety - without a small salt portion a no-quantity salt would read as 38 g
+  # of sodium. Longest-key-wins keeps "bell pepper"/"garlic" (produce) above the spice keys, and bare
+  # "pepper" is intentionally omitted so the pepper VEGETABLE is not mis-sized as the spice. Erring
+  # toward ~1 tsp (not a pinch) keeps a salty recipe from reading as low-sodium (the unsafe direction
+  # for a renal/hypertensive patient). Values are ILLUSTRATIVE, pending dietitian review.
+  salt: 6
+  black pepper: 2
+  white pepper: 2
+  peppercorn: 2
+  baking soda: 5
+  baking powder: 4
+  soy sauce: 6
+  bouillon: 4
+  msg: 5
+  garlic powder: 3
+  onion powder: 3
+  paprika: 2
+  cumin: 2
+  chili powder: 3
+  cayenne: 2
+  oregano: 1
+  basil: 1
+  thyme: 1
+  rosemary: 1
+  sage: 1
+  dill: 1
+  parsley: 1             # fresh herb; small default keeps a garnish from spiking vitamin K (warfarin)
+  cilantro: 1
+  mint: 1
+  chives: 1
+  cinnamon: 3
+  nutmeg: 2
+  turmeric: 3
+  coriander: 2
+  cardamom: 2
+  allspice: 2
+  vanilla: 4
+  yeast: 3
+  oil: 5                 # a no-quantity "oil" is a drizzle, not 100 g (energy safety)
 
 # Per-ingredient mass sanity ceiling (grams). A single recipe ingredient resolving above this is a
 # quantity-parse artifact (e.g. a noisy line parsing to 750,000 of something -> tens of thousands of

@@ -50,9 +50,24 @@ def test_longest_keyword_wins():
     assert resolve_mass_g(1, None, "Green onions, raw", table) == 15.0
 
 
-def test_none_quantity_is_zero_mass():
-    # "salt to taste" (no quantity) contributes zero mass rather than a spurious default.
-    assert resolve_mass_g(None, None, "Salt, table", _TABLE) == 0.0
+def test_none_quantity_defaults_to_one_portion():
+    # A named ingredient with no quantity ("chicken", "salt to taste") contributes ONE portion, not
+    # zero, so it does not vanish from the recipe (which understated ~8% of ingredients). The portion
+    # table sizes it: a main food gets ~one portion, a seasoning ~1 tsp.
+    salted = MeasureTable(count_grams={"salt": 6.0}, default_count_g=100.0)
+    assert resolve_mass_g(None, None, "chicken", salted) == 100.0       # main food -> one portion
+    assert resolve_mass_g(None, None, "salt to taste", salted) == 6.0   # seasoning -> ~1 tsp, not 100 g
+
+
+def test_no_quantity_salt_is_sodium_safe_in_real_config():
+    # The real measures.yaml must size a no-quantity salt/leavening as ~1 tsp, never the 100 g
+    # main-food default (which would be ~38 g of sodium). Sodium safety for renal/HTN patients.
+    from nutriscrape.nutrition.measures import resolve_mass_g_default
+
+    assert resolve_mass_g_default(None, None, "salt to taste") <= 10.0
+    assert resolve_mass_g_default(None, None, "baking soda") <= 10.0
+    assert resolve_mass_g_default(None, None, "soy sauce") <= 10.0
+    assert resolve_mass_g_default(None, None, "chicken breast") == 100.0  # main food still one portion
 
 
 def test_unrecognized_unit_falls_through_to_count():

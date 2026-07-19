@@ -86,8 +86,14 @@ def resolve_mass_g(
 
     A result above `table.max_ingredient_mass_g` is a quantity-parse artifact (a noisy line parsing
     to hundreds of thousands of something), not a real ingredient, so it resolves to 0 g: the garbage
-    contributes no mass or nutrients and cannot poison per-serving totals or dish-level statistics."""
-    q = quantity if quantity is not None else 0.0
+    contributes no mass or nutrients and cannot poison per-serving totals or dish-level statistics.
+
+    A line with no parsed quantity ("chicken", "salt to taste") defaults to ONE unit rather than 0 g,
+    so a named ingredient contributes its nutrition instead of vanishing (which understated ~8% of
+    ingredients and left dishes reading near-zero). The count/portion table sizes that one unit: a
+    main food gets ~one portion (the 100 g default), a seasoning gets ~1 tsp (see config/measures.yaml
+    count_grams), so a no-quantity salt cannot explode into a sodium bomb."""
+    q = quantity if quantity is not None else 1.0
     grams = _grams(q, unit, description, table)
     return grams if grams <= table.max_ingredient_mass_g else 0.0
 
