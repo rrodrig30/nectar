@@ -6,7 +6,27 @@ threshold behavior in `rank_candidates` / `best_match`. See ../../src/nutriscrap
 from __future__ import annotations
 
 from nutriscrape.resolution.fdc_client import FdcCandidate
-from nutriscrape.resolution.matcher import best_match, rank_candidates
+from nutriscrape.resolution.matcher import best_match, rank_candidates, stem
+
+
+def test_stem_singularizes_common_food_plurals() -> None:
+    assert stem("eggs") == "egg"
+    assert stem("onions") == "onion"
+    assert stem("sugars") == "sugar"
+    assert stem("potatoes") == "potato"
+    assert stem("tomatoes") == "tomato"
+    assert stem("berries") == "berry"
+    # left alone: short tokens and -ss words
+    assert stem("oil") == "oil"
+    assert stem("bass") == "bass"
+
+
+def test_plural_query_matches_singular_food_word() -> None:
+    # "eggs" must reach "Egg, whole, raw" over a specialty that carries the exact plural token
+    real = _candidate(1, "Egg, whole, raw, fresh")
+    specialty = _candidate(2, "Eggs, scrambled, frozen mixture")
+    ranked = rank_candidates("eggs", [specialty, real])
+    assert ranked[0].candidate.fdc_id == real.fdc_id
 
 
 def _candidate(

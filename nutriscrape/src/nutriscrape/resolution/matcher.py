@@ -75,8 +75,26 @@ class ScoredCandidate:
     head_match: float = 0.0
 
 
+def stem(token: str) -> str:
+    """Crude singularization so a query word matches the FDC food word across plural/singular forms
+    ("eggs" vs "Egg, whole", "sugar" vs "Sugars, granulated", "potatoes" vs "Potatoes, raw"). Without
+    it, exact-token comparison misses the base food and a specialty variant that happens to carry the
+    exact word wins (query "eggs" -> "Eggs, scrambled, frozen" over "Egg, whole, raw"). Linguistic
+    precision is not the goal: query and index are stemmed the same way, so a consistent over-strip
+    still matches. Short tokens and -ss words (bass, molasses) are left alone."""
+    if len(token) <= 3 or token.endswith("ss"):
+        return token
+    if token.endswith("ies"):
+        return token[:-3] + "y"                 # berries -> berry
+    if token.endswith("es") and token[-3] in "shxzo":
+        return token[:-2]                       # tomatoes -> tomato, dishes -> dish
+    if token.endswith("s"):
+        return token[:-1]                       # eggs -> egg, onions -> onion, sugars -> sugar
+    return token
+
+
 def _tokenize(text: str) -> set[str]:
-    return set(_TOKEN_RE.findall(text.lower()))
+    return {stem(t) for t in _TOKEN_RE.findall(text.lower())}
 
 
 def _token_overlap(query_tokens: set[str], candidate_tokens: set[str]) -> float:
@@ -108,13 +126,14 @@ def _data_type_preference(data_type: str) -> float:
 def _head_match(query_tokens: set[str], description: str) -> float:
     """1.0 if the candidate's leading (primary-food) term matches a query token, else 0.0.
 
-    Matching is prefix-tolerant so simple singular/plural pairs align (query "potato" against a
-    "Potatoes, ..." description). Short leading tokens are ignored to avoid spurious matches.
+    `query_tokens` are already stemmed (via `_tokenize`); the head is stemmed here too so a plural
+    query and a singular food word (or vice versa) align. Matching stays prefix-tolerant as a
+    backstop. Short leading tokens are ignored to avoid spurious matches.
     """
     head_tokens = _TOKEN_RE.findall(description.lower())
     if not head_tokens:
         return 0.0
-    head = head_tokens[0]
+    head = stem(head_tokens[0])
     if len(head) < _MIN_HEAD_TOKEN:
         return 0.0
     for token in query_tokens:

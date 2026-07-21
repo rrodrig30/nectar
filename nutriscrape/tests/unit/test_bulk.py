@@ -87,3 +87,28 @@ def test_concatenate_shards_merges_with_one_header(tmp_path):
     assert sum(1 for line in lines if line.startswith("recipe_id")) == 1   # header once
     assert any(line.startswith("a,") for line in lines)
     assert any(line.startswith("b,") for line in lines)
+
+
+def test_alias_maps_ambiguous_staple_to_base_food():
+    """A bare "sugar" must resolve to granulated sugar, not a specialty that shares the word
+    ("Sugar-apples"). The config alias expands it to a fuller query that is still validated against
+    the food set (normalize-then-validate). Without the alias the specialty can win on the raw
+    preference; with it, scoring against "granulated sugar" picks the base food."""
+    idx = FoodIndex()
+    idx._add("1", "Sugars, granulated", "sr_legacy_food", {"potassium": 2.0, "energy": 387.0})
+    idx._add("2", "Sugar-apples, (sweetsop), raw", "sr_legacy_food", {"potassium": 247.0})
+    # no alias: the specialty (raw, shares the exact token) is picked
+    assert idx.resolve("sugar").fdc_id == "2"
+    # with the alias, the base food wins
+    idx._aliases = {"sugar": "granulated sugar"}
+    idx._cache.clear()
+    assert idx.resolve("sugar").fdc_id == "1"
+
+
+def test_alias_only_fires_on_exact_normalized_string():
+    idx = FoodIndex()
+    idx._add("1", "Sugars, granulated", "sr_legacy_food", {"potassium": 2.0})
+    idx._add("2", "Cookies, sugar, commercially prepared", "sr_legacy_food", {"potassium": 60.0})
+    idx._aliases = {"sugar": "granulated sugar"}
+    # "sugar cookies" is not the bare staple, so the alias must not fire (stays a cookie)
+    assert idx.resolve("sugar cookies").fdc_id == "2"

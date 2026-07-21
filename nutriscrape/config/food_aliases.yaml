@@ -1,0 +1,71 @@
+# Canonical aliases for common, ambiguous ingredient words.
+#
+# A bare staple word ("sugar", "flour", "milk") is underspecified: the FDC set holds many foods that
+# share the word, and the ranker cannot know the plain base is meant, so it can pick a specialty
+# variant ("sugar" -> "Sugar-apples", "flour" -> "Soy flour", potassium 2515). This maps the bare
+# word to a fuller query that resolves to the base food (the normalize-then-validate pattern: the
+# expansion is still resolved and validated against FDC, never asserted). Matched as an EXACT match
+# on the normalized food string, so "sugar" is aliased but "sugar cookies" is not.
+#
+# Each expansion was validated to resolve to the intended base food against the SR Legacy FDC set.
+# Values are ILLUSTRATIVE reference choices, pending dietitian review; add entries as new mismatches
+# are found. This does not touch nutrient numbers, only which canonical food a name resolves to.
+
+aliases:
+  # sugars
+  sugar: granulated sugar
+  white sugar: granulated sugar
+  granulated sugar: granulated sugar
+  powdered sugar: sugars powdered
+  confectioners sugar: sugars powdered
+  icing sugar: sugars powdered
+  # flours
+  flour: wheat flour white
+  all purpose flour: wheat flour white
+  all-purpose flour: wheat flour white
+  plain flour: wheat flour white
+  bread flour: wheat flour white
+  # dairy
+  butter: butter salted
+  milk: milk lowfat
+  whole milk: milk lowfat
+  sour cream: sour cream cultured
+  cream cheese: cheese cream
+  heavy cream: cream heavy whipping
+  cheese: cheese cheddar
+  cheddar: cheese cheddar
+  cheddar cheese: cheese cheddar
+  parmesan: cheese parmesan
+  parmesan cheese: cheese parmesan
+  # eggs
+  egg: egg whole fresh
+  eggs: egg whole fresh
+  # leavening and baking
+  baking powder: leavening baking powder
+  baking soda: leavening baking soda
+  vanilla: vanilla extract
+  vanilla extract: vanilla extract
+  # peppers (the vegetable, not the spice)
+  bell pepper: peppers sweet green
+  bell peppers: peppers sweet green
+  green pepper: peppers sweet green
+  red pepper: peppers sweet red
+  # breads, pasta, grains
+  bread: bread white
+  white bread: bread white
+  pasta: pasta enriched cooked
+  spaghetti: pasta enriched cooked
+  macaroni: pasta enriched cooked
+  noodles: noodles egg
+  rice: rice white long grain
+  # condiments, oils, staples
+  ketchup: catsup
+  catsup: catsup
+  mayonnaise: mayonnaise
+  salt: salt table
+  oil: oil soybean
+  olive oil: oil olive
+  vegetable oil: oil soybean
+  canola oil: oil canola
+  water: water bottled
+  honey: honey
