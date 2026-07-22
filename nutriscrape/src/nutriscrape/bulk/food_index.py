@@ -46,6 +46,7 @@ class FoodIndex:
         self._postings: dict[str, list[str]] = {}            # token -> [fdc_id]
         self._cache: dict[str, ResolvedFood | None] = {}     # normalized query -> resolution
         self._aliases: dict[str, str] = {}                   # ambiguous staple -> canonical query
+        self._modifiers: frozenset[str] = frozenset()        # prep-state words to strip before match
 
     @classmethod
     def from_fdc_csv(
@@ -54,7 +55,7 @@ class FoodIndex:
         """Build the index from the FDC CSV bulk export (food.csv / nutrient.csv / food_nutrient.csv),
         reusing `iter_bulk_foods` so nutrient mapping and unit handling match the graph fdc-import."""
         index = cls()
-        index._aliases = _load_aliases(config_dir)
+        index._aliases, index._modifiers = _load_alias_config(config_dir)
         for food in iter_bulk_foods(csv_dir, config_dir=config_dir):
             index._add(food.fdc_id, food.description, food.data_type, food.raw_per_100g)
         return index
@@ -87,9 +88,11 @@ class FoodIndex:
         if cached is not _MISS:
             return cached  # type: ignore[return-value]
 
-        # Expand an ambiguous staple ("sugar", "flour") to its canonical query so it resolves to the
-        # base food, not a specialty variant. Cache stays keyed on the original normalized string.
-        query = self._aliases.get(key, key)
+        # Strip preparation-state words ("melted butter" -> "butter") then expand an ambiguous staple
+        # to its canonical query, so a modified staple still reaches the base food. Cache stays keyed
+        # on the original normalized string; if stripping removes everything, fall back to it.
+        stripped = " ".join(t for t in key.split() if t not in self._modifiers) or key
+        query = self._aliases.get(stripped, stripped)
         tokens = [stem(t) for t in _TOKEN_RE.findall(query)]
         candidate_ids: list[str] = []
         seen: set[str] = set()
@@ -117,23 +120,30 @@ class FoodIndex:
         return resolved
 
 
-def _load_aliases(config_dir: str | Path | None) -> dict[str, str]:
-    """Load config/food_aliases.yaml into a normalized-word -> canonical-query map. Keys and values
-    are lowercased and whitespace-collapsed so they match `normalize_food_query` output. Missing or
-    malformed config yields an empty map (resolution still works, just without the staple aliases)."""
+def _load_alias_config(
+    config_dir: str | Path | None,
+) -> tuple[dict[str, str], frozenset[str]]:
+    """Load config/food_aliases.yaml into (aliases, modifiers). Aliases map a normalized staple word
+    to a canonical query; modifiers are prep-state words stripped before the match. Keys/values are
+    lowercased and whitespace-collapsed to match `normalize_food_query` output. Missing or malformed
+    config yields empties (resolution still works, just without aliases/modifiers)."""
     try:
-        raw = load_config("food_aliases", config_dir).get("aliases", {})
+        cfg = load_config("food_aliases", config_dir)
     except FileNotFoundError:
-        return {}
-    if not isinstance(raw, dict):
-        return {}
-    out: dict[str, str] = {}
-    for key, value in raw.items():
-        k = " ".join(str(key).lower().split())
-        v = " ".join(str(value).lower().split())
-        if k and v:
-            out[k] = v
-    return out
+        return {}, frozenset()
+    raw_aliases = cfg.get("aliases", {})
+    aliases: dict[str, str] = {}
+    if isinstance(raw_aliases, dict):
+        for key, value in raw_aliases.items():
+            k = " ".join(str(key).lower().split())
+            v = " ".join(str(value).lower().split())
+            if k and v:
+                aliases[k] = v
+    raw_modifiers = cfg.get("modifiers", []) or []
+    modifiers = frozenset(
+        str(m).lower().strip() for m in raw_modifiers if str(m).strip()
+    ) if isinstance(raw_modifiers, list) else frozenset()
+    return aliases, modifiers
 
 
 # Sentinel so a cached None (a real "no confident match") is distinguished from an absent key.

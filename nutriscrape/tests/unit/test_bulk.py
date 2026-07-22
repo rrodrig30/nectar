@@ -112,3 +112,29 @@ def test_alias_only_fires_on_exact_normalized_string():
     idx._aliases = {"sugar": "granulated sugar"}
     # "sugar cookies" is not the bare staple, so the alias must not fire (stays a cookie)
     assert idx.resolve("sugar cookies").fdc_id == "2"
+
+
+def test_prep_modifiers_stripped_but_identity_words_kept():
+    """A preparation-state word ("melted", "chopped") is stripped so a modified staple reaches the
+    base food, but an identity word ("brown") is not, so "brown sugar" stays brown sugar."""
+    idx = FoodIndex()
+    idx._add("1", "Butter, salted", "sr_legacy_food", {"energy": 717.0})
+    idx._add("2", "Sugars, granulated", "sr_legacy_food", {"potassium": 2.0})
+    idx._add("3", "Sugars, brown", "sr_legacy_food", {"potassium": 133.0})
+    idx._aliases = {"butter": "butter salted", "sugar": "granulated sugar",
+                    "brown sugar": "sugars brown"}
+    idx._modifiers = frozenset({"melted", "chopped", "sifted"})
+    # "melted butter" -> strip "melted" -> "butter" -> base butter
+    assert idx.resolve("melted butter").fdc_id == "1"
+    # "sifted brown sugar" -> strip "sifted", keep "brown" -> brown sugar (not granulated)
+    assert idx.resolve("sifted brown sugar").fdc_id == "3"
+
+
+def test_load_alias_config_reads_aliases_and_modifiers():
+    from nutriscrape.bulk.food_index import _load_alias_config
+
+    aliases, modifiers = _load_alias_config(None)   # real config/food_aliases.yaml
+    assert aliases.get("sugar") == "granulated sugar"
+    assert aliases.get("ketchup") == "catsup"
+    assert "melted" in modifiers and "chopped" in modifiers
+    assert "brown" not in modifiers and "sour" not in modifiers   # identity words never stripped

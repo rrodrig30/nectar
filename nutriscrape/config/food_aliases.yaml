@@ -27,6 +27,13 @@ aliases:
   bread flour: wheat flour white
   # dairy
   butter: butter salted
+  # Unsalted butter's real FDC entry is a reduced-fat "light" variant under this query, which would
+  # understate energy; regular butter keeps energy right and errs sodium high (the safe direction for
+  # a renal/HTN patient), far better than the fat-free "Butter replacement" it fell back to.
+  unsalted butter: butter salted
+  salted butter: butter salted
+  sweet butter: butter salted
+  unsalted margarine: margarine
   milk: milk lowfat
   whole milk: milk lowfat
   sour cream: sour cream cultured
@@ -69,3 +76,50 @@ aliases:
   canola oil: oil canola
   water: water bottled
   honey: honey
+
+# Preparation-state words stripped from an ingredient string before the alias/exact match, so a
+# modified staple reaches the base food ("melted butter" -> "butter" -> Butter, salted; "chopped
+# onion" -> "onion"). Deliberately EXCLUDES words that change a food's identity - not "brown"
+# (brown sugar), "sour" (sour cream), "green" (green pepper), "heavy" (heavy cream), "salted" /
+# "unsalted" (sodium differs, handled by explicit aliases above), nor "fresh" / "dried" / "frozen" /
+# "ground" (different composition, or a food like "ground cherry"). Strip only physical manipulation.
+modifiers:
+  - melted
+  - softened
+  - sifted
+  - packed
+  - chopped
+  - minced
+  - diced
+  - sliced
+  - shredded
+  - grated
+  - crushed
+  - cubed
+  - halved
+  - quartered
+  - mashed
+  - beaten
+  - whipped
+  - drained
+  - rinsed
+  - peeled
+  - cored
+  - seeded
+  - pitted
+  - trimmed
+  - deveined
+  - boneless
+  - skinless
+  - crumbled
+  - flaked
+  - julienned
+  - torn
+  - finely
+  - coarsely
+  - freshly
+  - thinly
+  - thickly
+  - warmed
+  - cooled
+  - chilled
