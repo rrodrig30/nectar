@@ -14,6 +14,7 @@ from nectar.api.deps import get_contract_client
 from nectar.api.schemas import (
     BrowseDishOut,
     ConditionOut,
+    ConditionRuleOut,
     DishSummaryOut,
     GuidelineOut,
     NutrientInfoOut,
@@ -80,6 +81,28 @@ def get_conditions(
 ) -> list[ConditionOut]:
     """Every `:Condition` in the knowledge base, for the condition selector."""
     return [ConditionOut(**row) for row in client.list_conditions()]
+
+
+@router.get("/conditions/{condition_id}/rules", response_model=list[ConditionRuleOut])
+def get_condition_rules(
+    condition_id: str,
+    client: ContractClient = Depends(get_contract_client),
+) -> list[ConditionRuleOut]:
+    """The nutrient dietary rules a condition imposes (per-serving limits and targets), so the recipe
+    browser can filter and sort meals for that condition. Read-only reference knowledge; this is an
+    exploratory aid, not a per-patient recommendation (that path is deterministic and physician-
+    confirmed, see /profile/derive -> /profile/confirm -> /recommend)."""
+    return [
+        ConditionRuleOut(
+            nutrient=str(r["nutrient_id"]),
+            direction=str(r.get("direction") or "limit"),
+            severity=r.get("severity"),
+            threshold=r.get("threshold"),
+            unit=r.get("unit"),
+        )
+        for r in client.condition_rules(condition_id)
+        if r.get("nutrient_id") is not None
+    ]
 
 
 @router.get("/guidelines", response_model=list[GuidelineOut])

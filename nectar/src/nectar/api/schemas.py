@@ -197,6 +197,19 @@ class ConditionOut(BaseModel):
     name: str | None = None
 
 
+class ConditionRuleOut(BaseModel):
+    """One nutrient dietary rule a condition imposes, for the recipe browser's health-condition
+    filter. `direction` is `limit` (a per-serving ceiling to stay at or below) or `target` (a per-
+    serving amount to aim for); `threshold` is that value in `unit`. `severity` (absolute/strong/
+    moderate/soft) ranks how firm the rule is, so the browser can sort by the firmest limit."""
+
+    nutrient: str
+    direction: str
+    severity: str | None = None
+    threshold: float | None = None
+    unit: str | None = None
+
+
 class GuidelineOut(BaseModel):
     """One `:Guideline` passage (contract Section 2.2), for the evidence panel. `chunk` is the
     passage text; it may be null when only the citation stub is loaded (KB curation is a standing

@@ -497,6 +497,13 @@ class ContractClient:
                 constraints.append(constraint)
         return constraints
 
+    def condition_rules(self, condition_id: str) -> list[dict[str, Any]]:
+        """The nutrient dietary rules a condition imposes, as raw rows (`{nutrient_id, direction,
+        severity, threshold, unit}`), for the recipe browser's health-condition filter. Same rules
+        the engine consumes as `Constraint`s; returned untranslated so the UI can show and apply the
+        per-nutrient limits/targets directly."""
+        return self._read(_CONSTRAINTS_FOR_CONDITION, condition_id=condition_id)
+
     def guideline_passages(self, ids: list[str]) -> list[dict[str, Any]]:
         """Guideline passages by id, for citation in `interact/explain.py`."""
         return self._read(_GUIDELINE_PASSAGES, ids=list(ids))

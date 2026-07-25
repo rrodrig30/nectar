@@ -1,8 +1,44 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, ApiError } from '../api';
 import { RecipeView } from './RecipeView';
 import { fmt } from '../nutrients';
-import type { BrowseDish, DerivedConstraint, NutrientInfo, RecipeDetail } from '../types';
+import type {
+  BrowseDish,
+  Condition,
+  ConditionRule,
+  DerivedConstraint,
+  NutrientInfo,
+  RecipeDetail,
+} from '../types';
+
+// Readable names for the knowledge base's condition ids (the :Condition nodes carry no name yet).
+const CONDITION_LABELS: Record<string, string> = {
+  ckd: 'Chronic kidney disease (CKD)',
+  htn: 'High blood pressure (hypertension)',
+  cad: 'Heart disease (coronary artery)',
+  t2dm: 'Type 2 diabetes',
+  transplant: 'Organ transplant',
+  oxalate_stones: 'Oxalate kidney stones',
+};
+const conditionLabel = (c: Condition): string =>
+  c.name ?? CONDITION_LABELS[c.condition_id] ?? c.condition_id;
+
+// How firm a rule is, so the browser sorts by the firmest per-serving limit.
+const SEVERITY_RANK: Record<string, number> = { absolute: 4, strong: 3, moderate: 2, soft: 1 };
+
+// A condition's rules that cap a nutrient (a ceiling to stay at or below). `target`/`prefer` rules
+// (aim for MORE, e.g. fiber, or HTN potassium) are shown as guidance, not applied as a cap, because
+// the browser filters on ceilings only.
+function limitRules(rules: ConditionRule[]): ConditionRule[] {
+  return rules.filter(
+    (r) => (r.direction === 'limit' || r.direction === 'avoid') && r.threshold != null,
+  );
+}
+function targetRules(rules: ConditionRule[]): ConditionRule[] {
+  return rules.filter(
+    (r) => (r.direction === 'target' || r.direction === 'prefer') && r.threshold != null,
+  );
+}
 
 // The clinically-actionable ceilings a physician browses by: renal electrolytes (potassium,
 // phosphorus), the HTN sodium limit, and the weight-goal energy cap. Each is a per-serving max; a
@@ -46,6 +82,16 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
   const [openDish, setOpenDish] = useState<string | null>(null);
   const [recipe, setRecipe] = useState<RecipeDetail | null>(null);
   const [recipeErr, setRecipeErr] = useState<string | null>(null);
+  const [conditions, setConditions] = useState<Condition[]>([]);
+  const [condition, setCondition] = useState('');
+  const [conditionRules, setConditionRules] = useState<ConditionRule[]>([]);
+
+  // The conditions the knowledge base can filter for.
+  useEffect(() => {
+    let live = true;
+    api.conditions().then((cs) => { if (live) setConditions(cs); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
 
   const hasPatientLimits = FILTERS.some((f) => patientCeiling(confirmed, f.id) != null);
 
@@ -58,28 +104,67 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
     setCeil(next);
   };
 
-  const numericCeilings = (): Record<string, number> => {
+  // Merge a condition's per-serving ceilings with the manual caps (manual wins). Applies EVERY
+  // limited nutrient the condition names, not only the four shown as inputs.
+  const numericCeilings = (rules: ConditionRule[], manual: Record<string, string>): Record<string, number> => {
     const out: Record<string, number> = {};
-    for (const [k, v] of Object.entries(ceil)) {
+    for (const r of limitRules(rules)) {
+      if (r.threshold != null) out[r.nutrient] = Math.min(out[r.nutrient] ?? Infinity, r.threshold);
+    }
+    for (const [k, v] of Object.entries(manual)) {
       const n = Number(v);
       if (v.trim() !== '' && Number.isFinite(n)) out[k] = n;
     }
     return out;
   };
 
-  const search = async (): Promise<void> => {
+  const runSearch = async (
+    rules: ConditionRule[], manual: Record<string, string>, sortBy: string,
+  ): Promise<void> => {
     if (q.trim() === '') return;
     setLoading(true);
     setError(null);
     setOpenDish(null);
     setRecipe(null);
     try {
-      setResults(await api.browseDishes(q.trim(), numericCeilings(), sort));
+      setResults(await api.browseDishes(q.trim(), numericCeilings(rules, manual), sortBy));
       setSearched(true);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const search = (): Promise<void> => runSearch(conditionRules, ceil, sort);
+
+  // Pick a health condition: pull its dietary rules, fill the shown caps + sort by the firmest
+  // limit, and re-run the search so results are filtered and sorted for that condition.
+  const selectCondition = async (id: string): Promise<void> => {
+    setCondition(id);
+    if (id === '') {
+      setConditionRules([]);
+      void runSearch([], ceil, sort);
+      return;
+    }
+    try {
+      const rules = await api.conditionRules(id);
+      setConditionRules(rules);
+      const limits = limitRules(rules);
+      const nextCeil: Record<string, string> = { ...ceil };
+      for (const f of FILTERS) {
+        const r = limits.find((x) => x.nutrient === f.id);
+        if (r && r.threshold != null) nextCeil[f.id] = String(Math.round(r.threshold));
+      }
+      setCeil(nextCeil);
+      const firmest = [...limits].sort(
+        (a, b) => (SEVERITY_RANK[b.severity ?? ''] ?? 0) - (SEVERITY_RANK[a.severity ?? ''] ?? 0),
+      )[0];
+      const nextSort = firmest ? firmest.nutrient : sort;
+      setSort(nextSort);
+      void runSearch(rules, nextCeil, nextSort);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
     }
   };
 
@@ -100,6 +185,7 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
 
   const unitFor = (nutrient: string): string =>
     FILTERS.find((f) => f.id === nutrient)?.unit ?? vocab.get(nutrient)?.unit ?? '';
+  const label = (nutrient: string): string => vocab.get(nutrient)?.name ?? nutrient;
 
   return (
     <div className="card">
@@ -112,10 +198,11 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
         )}
       </div>
       <p className="card-hint">
-        Browse the {`${(1031099).toLocaleString()}`}-dish corpus for meal ideas that meet a patient's
-        needs. Search by name, then cap the per-serving nutrients that matter for this patient. A dish
-        qualifies when at least one of its versions is at or below every cap. Values are the version
-        spread, calculated not measured.
+        Browse the corpus for meal ideas that meet a patient's needs. Search by name, then pick a
+        health condition to apply its dietary limits (or set the per-serving caps manually). A dish
+        qualifies when at least one of its versions is at or below every cap; results sort by the
+        firmest limit. Values are the version spread, calculated not measured, and this is an
+        exploratory aid &mdash; the full personalized recommendation is the Compose flow.
       </p>
 
       <div className="field">
@@ -135,6 +222,39 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
         </div>
       </div>
 
+      <div className="field">
+        <label>Filter for a health condition</label>
+        <select value={condition} onChange={(e) => void selectCondition(e.target.value)}>
+          <option value="">None &mdash; set caps manually below</option>
+          {conditions.map((c) => (
+            <option key={c.condition_id} value={c.condition_id}>
+              {conditionLabel(c)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {condition && conditionRules.length > 0 && (
+        <div className="condition-rules">
+          <span className="cr-label">Applied limits per serving:</span>
+          {limitRules(conditionRules).map((r) => (
+            <span className="cr-chip limit" key={`l-${r.nutrient}`}>
+              {label(r.nutrient)} &le; {r.threshold != null ? fmt(r.threshold) : ''} {r.unit}
+            </span>
+          ))}
+          {targetRules(conditionRules).length > 0 && (
+            <>
+              <span className="cr-label cr-target">Also aim for:</span>
+              {targetRules(conditionRules).map((r) => (
+                <span className="cr-chip target" key={`t-${r.nutrient}`}>
+                  {label(r.nutrient)} &ge; {r.threshold != null ? fmt(r.threshold) : ''} {r.unit}
+                </span>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="grid browse-filters">
         {FILTERS.map((f) => (
           <div className="field" key={f.id}>
@@ -153,11 +273,13 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
           <label>Sort by</label>
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="">Name relevance</option>
-            {FILTERS.map((f) => (
-              <option key={f.id} value={f.id}>
-                Lowest {f.label.toLowerCase()}
-              </option>
-            ))}
+            {[...new Set([...FILTERS.map((f) => f.id), ...limitRules(conditionRules).map((r) => r.nutrient)])].map(
+              (id) => (
+                <option key={id} value={id}>
+                  Lowest {label(id).toLowerCase()}
+                </option>
+              ),
+            )}
           </select>
         </div>
       </div>

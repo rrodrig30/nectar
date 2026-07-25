@@ -8,6 +8,7 @@ import type {
   BrowseDish,
   ClinicalSnapshot,
   Condition,
+  ConditionRule,
   ConfirmResponse,
   DerivedConstraint,
   DeriveResponse,
@@ -125,6 +126,11 @@ export const api = {
   /** GET /conditions - every condition in the knowledge base, for the selector. */
   conditions(): Promise<Condition[]> {
     return request<Condition[]>('/conditions');
+  },
+
+  /** GET /conditions/:id/rules - the nutrient limits/targets a condition imposes, for the browser. */
+  conditionRules(conditionId: string): Promise<ConditionRule[]> {
+    return request<ConditionRule[]>(`/conditions/${encodeURIComponent(conditionId)}/rules`);
   },
 
   /** GET /guidelines - guideline passages for the given ids (unresolved ids are omitted). */

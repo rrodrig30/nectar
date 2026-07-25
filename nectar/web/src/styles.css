@@ -378,3 +378,18 @@ table.mini th { font-size: 0.7rem; }
 }
 .nutrition-basis > summary:hover { color: var(--accent); }
 .nutrition-basis[open] > summary { margin-bottom: 0.5rem; }
+
+/* --- Recipe browser: applied health-condition rules --- */
+.condition-rules {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem;
+  margin: 0.2rem 0 0.6rem; padding: 0.5rem 0.6rem; background: var(--accent-soft);
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.cr-label { font-size: 0.78rem; font-weight: 600; color: var(--accent); }
+.cr-label.cr-target { color: var(--ink-soft); margin-left: 0.4rem; }
+.cr-chip {
+  display: inline-flex; align-items: baseline; gap: 0.2rem; font-size: 0.76rem;
+  border-radius: 6px; padding: 0.1rem 0.45rem; font-variant-numeric: tabular-nums;
+}
+.cr-chip.limit { background: var(--danger-soft); color: var(--danger); border: 1px solid #f3b4ad; }
+.cr-chip.target { background: var(--ok-soft); color: var(--ok); border: 1px solid #a7d7bd; }

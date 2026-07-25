@@ -79,6 +79,14 @@ export interface Condition {
   name: string | null;
 }
 
+export interface ConditionRule {
+  nutrient: string;
+  direction: string; // 'limit' (ceiling) or 'target' (aim for)
+  severity: string | null; // absolute | strong | moderate | soft
+  threshold: number | null;
+  unit: string | null;
+}
+
 export interface Guideline {
   guideline_id: string;
   org: string | null;
