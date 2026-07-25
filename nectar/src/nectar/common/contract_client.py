@@ -163,6 +163,7 @@ OPTIONAL MATCH (p:{PREPARATION} {{prep_id: c.prep_id}})
 WITH r, v, c, f, p ORDER BY coalesce(c.raw_mass_g, 0.0) DESC
 RETURN r.recipe_id AS recipe_id, r.title AS title, r.servings AS servings,
        r.source_id AS source_id, r.license AS license,
+       r.ingredient_lines AS ingredient_lines, r.directions AS directions,
        v.serving_mass_g AS serving_mass_g, v.energy_kcal AS energy_kcal, v.fluid_ml AS fluid_ml,
        collect(CASE WHEN f IS NULL THEN NULL ELSE
          {{food: f.description, amount: c.raw_mass_g, method: p.method, cut_class: p.cut_class}}
@@ -454,6 +455,9 @@ class ContractClient:
             return None
         row = rows[0]
         row["ingredients"] = [ing for ing in row.get("ingredients", []) if ing is not None]
+        # The original recipe text (for cooking); null on a recipe not yet enriched -> empty list.
+        row["ingredient_lines"] = row.get("ingredient_lines") or []
+        row["directions"] = row.get("directions") or []
         return row
 
     def dish_nutrient_stats(self, dish_id: str) -> dict[str, DishNutrientStat]:

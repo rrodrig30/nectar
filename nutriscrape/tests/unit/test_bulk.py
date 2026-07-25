@@ -138,3 +138,35 @@ def test_load_alias_config_reads_aliases_and_modifiers():
     assert aliases.get("ketchup") == "catsup"
     assert "melted" in modifiers and "chopped" in modifiers
     assert "brown" not in modifiers and "sour" not in modifiers   # identity words never stripped
+
+
+def test_enrich_recipes_sets_ingredient_lines_and_directions(tmp_path):
+    """The enrichment reads the corpus and batches (recipe_id, ingredient_lines, directions) for an
+    UNWIND update, so the recipe view can show the real ingredients and the cooking method."""
+    import csv
+    import json
+
+    from nutriscrape.bulk.enrich import enrich_recipes
+
+    corpus = tmp_path / "c.csv"
+    with corpus.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["", "title", "ingredients", "directions", "link", "source", "NER"])
+        w.writerow(["0", "Nut Cookies", json.dumps(["1 c. sugar", "2 eggs"]),
+                    json.dumps(["Mix well.", "Bake 10 min."]), "x", "y", "[]"])
+
+    class _CaptureClient:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, dict]] = []
+
+        def run_write(self, cypher: str, params: dict) -> list:
+            self.calls.append((cypher, params))
+            return []
+
+    client = _CaptureClient()
+    n = enrich_recipes(client, str(corpus), batch_size=10)
+    assert n == 1 and len(client.calls) == 1
+    row = client.calls[0][1]["batch"][0]
+    assert row["id"] == "recipenlg:0"
+    assert row["ingredients"] == ["1 c. sugar", "2 eggs"]
+    assert row["directions"] == ["Mix well.", "Bake 10 min."]

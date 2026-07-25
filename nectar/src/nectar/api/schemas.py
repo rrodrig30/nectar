@@ -230,9 +230,12 @@ class IngredientOut(BaseModel):
 
 
 class RecipeDetailOut(BaseModel):
-    """The primary recipe behind a dish, for the recipe view: title, servings, provenance, the
-    ingredient list with per-ingredient preparation, and the as-authored variant's per-serving
-    facts (mass, energy, fluid). Serving facts are null when the variant has not been materialized."""
+    """The primary recipe behind a dish, for the recipe view. `ingredient_lines` and `directions` are
+    the original recipe text (quantities as written, and the step-by-step method) so the user can
+    actually make the meal; `ingredients` is the resolved-food list with per-ingredient preparation
+    that the nutrition is computed from. `serving_mass_g`/`energy_kcal`/`fluid_ml` are the as-authored
+    variant's per-serving facts (null when not materialized). Recipe text is empty for a recipe not
+    yet enriched from the corpus."""
 
     recipe_id: str
     title: str | None = None
@@ -242,6 +245,8 @@ class RecipeDetailOut(BaseModel):
     serving_mass_g: float | None = None
     energy_kcal: float | None = None
     fluid_ml: float | None = None
+    ingredient_lines: list[str] = Field(default_factory=list)
+    directions: list[str] = Field(default_factory=list)
     ingredients: list[IngredientOut] = Field(default_factory=list)
 
 

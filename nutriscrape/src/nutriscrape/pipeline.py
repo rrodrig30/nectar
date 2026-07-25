@@ -356,6 +356,18 @@ def run_bulk_materialize_load() -> None:
         _load(client)
 
 
+def run_enrich() -> None:
+    """Add the human-readable ingredient lines and cooking directions to existing :Recipe nodes from
+    the corpus, so the recipe view can show how to make the meal. Additive and safe on a live graph
+    (sets two text properties by recipe_id; no re-resolution, no re-clustering, no deletes). Corpus
+    is NUTRISCRAPE_CORPUS or the bundled sample."""
+    from nutriscrape.bulk.enrich import enrich_recipes
+
+    logger.info("enrich: adding ingredient lines and directions to recipes")
+    with GraphClient.from_env() as client:
+        enrich_recipes(client, _sample_corpus_path())
+
+
 # ---------------------------------------------------------------------------------------- ingest
 
 
