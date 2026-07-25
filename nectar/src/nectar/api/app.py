@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from nectar.api.routes import ask, catalog, plan, recommend, research, settings
+from nectar.api.routes import ask, catalog, images, plan, recommend, research, settings
 
 
 def create_app() -> FastAPI:
@@ -28,6 +28,7 @@ def create_app() -> FastAPI:
     app.include_router(plan.router)
     app.include_router(ask.router)
     app.include_router(research.router)
+    app.include_router(images.router)
     return app
 
 

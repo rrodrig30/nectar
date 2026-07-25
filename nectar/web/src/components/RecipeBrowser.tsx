@@ -85,11 +85,13 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
   const [conditions, setConditions] = useState<Condition[]>([]);
   const [condition, setCondition] = useState('');
   const [conditionRules, setConditionRules] = useState<ConditionRule[]>([]);
+  const [imagesAvailable, setImagesAvailable] = useState(false);
 
-  // The conditions the knowledge base can filter for.
+  // The conditions the knowledge base can filter for, and whether dish illustrations are available.
   useEffect(() => {
     let live = true;
     api.conditions().then((cs) => { if (live) setConditions(cs); }).catch(() => {});
+    api.imageStatus().then((s) => { if (live) setImagesAvailable(s.available); }).catch(() => {});
     return () => { live = false; };
   }, []);
 
@@ -321,7 +323,14 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
                 <div className="browse-recipe">
                   {recipeErr && <div className="notice err">{recipeErr}</div>}
                   {!recipe && !recipeErr && <p className="spinner">Loading recipe…</p>}
-                  {recipe && <RecipeView recipe={recipe} vocab={vocab} />}
+                  {recipe && (
+                    <RecipeView
+                      recipe={recipe}
+                      vocab={vocab}
+                      dishId={d.dish_id}
+                      imagesAvailable={imagesAvailable}
+                    />
+                  )}
                 </div>
               )}
             </li>

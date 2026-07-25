@@ -447,6 +447,13 @@ class ContractClient:
             pool=pool,
         )
 
+    def dish_name(self, dish_id: str) -> str | None:
+        """The dish's canonical_name (for the illustration prompt), or None if the dish is unknown."""
+        rows = self._read(
+            f"MATCH (d:{DISH} {{dish_id: $dish_id}}) RETURN d.canonical_name AS name", dish_id=dish_id
+        )
+        return str(rows[0]["name"]) if rows and rows[0].get("name") is not None else None
+
     def list_conditions(self) -> list[dict[str, Any]]:
         """All `:Condition` nodes in the knowledge base (`{condition_id, name}`), so the UI can
         offer a real condition selector rather than free-text ids."""

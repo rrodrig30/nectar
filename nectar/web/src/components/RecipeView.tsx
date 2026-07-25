@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { api } from '../api';
 import type { NutrientInfo, RecipeDetail } from '../types';
 import { humanize } from '../nutrients';
 import { NutritionPanel } from './NutritionPanel';
@@ -5,13 +7,71 @@ import { NutritionPanel } from './NutritionPanel';
 interface Props {
   recipe: RecipeDetail;
   vocab?: Map<string, NutrientInfo>; // when given, the per-serving nutrition table is shown
+  dishId?: string; // enables the AI illustration when image generation is available
+  imagesAvailable?: boolean;
+}
+
+type ImgState = 'idle' | 'loading' | 'ok' | 'unavailable' | 'error';
+
+// An AI-generated illustration of the dish, generated on demand and clearly labeled. It is a
+// synthetic picture for visual reference, not a photo of the actual prepared recipe.
+function DishIllustration({ dishId }: { dishId: string }): JSX.Element {
+  const [state, setState] = useState<ImgState>('idle');
+  const [url, setUrl] = useState<string | null>(null);
+
+  const generate = async (): Promise<void> => {
+    setState('loading');
+    try {
+      const res = await fetch(api.dishImageUrl(dishId));
+      if (res.status === 503) {
+        setState('unavailable');
+        return;
+      }
+      if (!res.ok) {
+        setState('error');
+        return;
+      }
+      setUrl(URL.createObjectURL(await res.blob()));
+      setState('ok');
+    } catch {
+      setState('error');
+    }
+  };
+
+  return (
+    <section className="dish-illustration">
+      {state === 'ok' && url ? (
+        <figure className="illus-figure">
+          <img src={url} alt="AI-generated illustration of the dish" className="illus-img" />
+          <figcaption className="illus-caption">
+            AI-generated illustration &mdash; not a photograph of the actual dish.
+          </figcaption>
+        </figure>
+      ) : (
+        <div className="illus-cta">
+          <button className="btn-ghost btn-sm" onClick={() => void generate()} disabled={state === 'loading'}>
+            {state === 'loading' ? 'Generating illustration…' : '✨ Generate illustration'}
+          </button>
+          {state === 'unavailable' && (
+            <span className="muted illus-note">Image generation is not configured on this server.</span>
+          )}
+          {state === 'error' && (
+            <span className="muted illus-note">Could not generate an illustration just now.</span>
+          )}
+          {state === 'idle' && (
+            <span className="muted illus-note">A labeled AI illustration, not a real photo.</span>
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
 // The recipe as a cook uses it: the ingredient list with quantities as written, then the
 // step-by-step directions. The resolved-food table (what the nutrition is computed from, with parsed
 // per-ingredient masses) is kept below as a collapsible detail, since those amounts are calibration
 // inputs, not cooking measurements.
-export function RecipeView({ recipe, vocab }: Props): JSX.Element {
+export function RecipeView({ recipe, vocab, dishId, imagesAvailable }: Props): JSX.Element {
   const methods = [...new Set(recipe.ingredients.map((i) => i.method).filter(Boolean))] as string[];
   const hasText = recipe.ingredient_lines.length > 0 || recipe.directions.length > 0;
 
@@ -38,6 +98,8 @@ export function RecipeView({ recipe, vocab }: Props): JSX.Element {
           )}
         </div>
       )}
+
+      {imagesAvailable && dishId && <DishIllustration dishId={dishId} />}
 
       {vocab && recipe.nutrients.length > 0 && (
         <NutritionPanel nutrients={recipe.nutrients} vocab={vocab} />

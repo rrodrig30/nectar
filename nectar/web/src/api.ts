@@ -178,4 +178,14 @@ export const api = {
   models(): Promise<string[]> {
     return request<string[]>('/settings/models');
   },
+
+  /** GET /images/status - whether AI dish-illustration generation is configured on the server. */
+  imageStatus(): Promise<{ available: boolean }> {
+    return request<{ available: boolean }>('/images/status');
+  },
+
+  /** The URL for a dish's AI-generated illustration (PNG). Fetch it to handle 503/errors. */
+  dishImageUrl(dishId: string): string {
+    return `${BASE}/dish/image?dish_id=${encodeURIComponent(dishId)}`;
+  },
 };

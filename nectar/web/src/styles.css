@@ -393,3 +393,17 @@ table.mini th { font-size: 0.7rem; }
 }
 .cr-chip.limit { background: var(--danger-soft); color: var(--danger); border: 1px solid #f3b4ad; }
 .cr-chip.target { background: var(--ok-soft); color: var(--ok); border: 1px solid #a7d7bd; }
+
+/* --- Dish illustration (AI-generated, labeled) --- */
+.dish-illustration { margin: 0.6rem 0; }
+.illus-cta { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.illus-note { font-size: 0.78rem; }
+.illus-figure { margin: 0; display: inline-block; max-width: 340px; }
+.illus-img {
+  width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line);
+  box-shadow: var(--shadow); display: block;
+}
+.illus-caption {
+  font-size: 0.72rem; color: var(--warn); background: var(--warn-soft); border: 1px solid #f0cfa0;
+  border-radius: 0 0 8px 8px; padding: 0.25rem 0.5rem; margin-top: -4px; text-align: center;
+}
