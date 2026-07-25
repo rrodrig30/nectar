@@ -112,6 +112,7 @@ export interface RecipeDetail {
   ingredient_lines: string[]; // original text, quantities as written (for cooking)
   directions: string[]; // step-by-step method
   ingredients: Ingredient[]; // resolved foods the nutrition is computed from
+  nutrients: NutrientValue[]; // per-serving nutrition of the as-authored variant
 }
 
 // --- Recommendation (engine/*, present/disclaimer.py) ---

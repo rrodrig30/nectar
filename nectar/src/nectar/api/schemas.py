@@ -248,6 +248,7 @@ class RecipeDetailOut(BaseModel):
     ingredient_lines: list[str] = Field(default_factory=list)
     directions: list[str] = Field(default_factory=list)
     ingredients: list[IngredientOut] = Field(default_factory=list)
+    nutrients: list["NutrientValueOut"] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

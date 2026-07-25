@@ -1,15 +1,17 @@
-import type { RecipeDetail } from '../types';
+import type { NutrientInfo, RecipeDetail } from '../types';
 import { humanize } from '../nutrients';
+import { NutritionPanel } from './NutritionPanel';
 
 interface Props {
   recipe: RecipeDetail;
+  vocab?: Map<string, NutrientInfo>; // when given, the per-serving nutrition table is shown
 }
 
 // The recipe as a cook uses it: the ingredient list with quantities as written, then the
 // step-by-step directions. The resolved-food table (what the nutrition is computed from, with parsed
 // per-ingredient masses) is kept below as a collapsible detail, since those amounts are calibration
 // inputs, not cooking measurements.
-export function RecipeView({ recipe }: Props): JSX.Element {
+export function RecipeView({ recipe, vocab }: Props): JSX.Element {
   const methods = [...new Set(recipe.ingredients.map((i) => i.method).filter(Boolean))] as string[];
   const hasText = recipe.ingredient_lines.length > 0 || recipe.directions.length > 0;
 
@@ -35,6 +37,10 @@ export function RecipeView({ recipe }: Props): JSX.Element {
             <span className="sf"><b>{Math.round(recipe.fluid_ml)}</b> mL<span className="sf-l">fluid</span></span>
           )}
         </div>
+      )}
+
+      {vocab && recipe.nutrients.length > 0 && (
+        <NutritionPanel nutrients={recipe.nutrients} vocab={vocab} />
       )}
 
       {recipe.ingredient_lines.length > 0 && (

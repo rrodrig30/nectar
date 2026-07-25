@@ -199,7 +199,7 @@ export function RecipeBrowser({ vocab, confirmed }: Props): JSX.Element {
                 <div className="browse-recipe">
                   {recipeErr && <div className="notice err">{recipeErr}</div>}
                   {!recipe && !recipeErr && <p className="spinner">Loading recipe…</p>}
-                  {recipe && <RecipeView recipe={recipe} />}
+                  {recipe && <RecipeView recipe={recipe} vocab={vocab} />}
                 </div>
               )}
             </li>

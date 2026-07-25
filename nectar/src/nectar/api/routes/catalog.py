@@ -17,9 +17,11 @@ from nectar.api.schemas import (
     DishSummaryOut,
     GuidelineOut,
     NutrientInfoOut,
+    NutrientValueOut,
     RecipeDetailOut,
 )
 from nectar.common.contract_client import ContractClient
+from nectar.present.disclaimer import attach as attach_disclaimer
 
 router = APIRouter()
 
@@ -110,4 +112,18 @@ def get_recipe(
     recipe = client.recipe_for_dish(dish_id)
     if recipe is None:
         raise HTTPException(status_code=404, detail=f"no recipe for dish {dish_id!r}")
-    return RecipeDetailOut(**recipe)
+    # The as-authored variant's per-serving nutrients, with the calculated-not-measured disclaimer.
+    nutrients: list[NutrientValueOut] = []
+    for r in client.recipe_nutrients_for_dish(dish_id):
+        if r.get("nutrient_id") is None or r.get("amount") is None:
+            continue
+        disclosed = attach_disclaimer(
+            float(r["amount"]), unit=str(r.get("unit") or ""),
+            source=str(r.get("source") or "calculated"),
+            confidence=float(r["confidence"]) if r.get("confidence") is not None else 0.5,
+        )
+        nutrients.append(NutrientValueOut(
+            nutrient=str(r["nutrient_id"]), value=disclosed.value,
+            measured=disclosed.measured, disclaimer=disclosed.disclaimer,
+        ))
+    return RecipeDetailOut(**recipe, nutrients=nutrients)

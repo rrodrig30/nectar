@@ -170,6 +170,17 @@ RETURN r.recipe_id AS recipe_id, r.title AS title, r.servings AS servings,
        END) AS ingredients
 """
 
+# Per-serving nutrient vector of the primary recipe's as-authored variant, with provenance, for the
+# recipe view's nutrition table. Same source/confidence the recommend path carries, so the
+# calculated-not-measured disclaimer is specific.
+_RECIPE_NUTRIENTS_FOR_DISH = f"""
+MATCH (d:{DISH} {{dish_id: $dish_id}})-[:{HAS_VERSION}]->(r:{RECIPE})
+WITH r ORDER BY coalesce(r.confidence, 0.0) DESC LIMIT 1
+MATCH (r)-[:{HAS_VARIANT}]->(v:{RECIPE_VARIANT} {{is_as_authored: true}})-[h:{HAS_NUTRIENT}]->(n:{NUTRIENT})
+RETURN n.nutrient_id AS nutrient_id, h.amount_per_serving AS amount,
+       h.source AS source, h.confidence AS confidence, n.unit AS unit
+"""
+
 _CONSTRAINTS_FOR_CONDITION = f"""
 MATCH (:{CONDITION} {{condition_id: $condition_id}})-[:{IMPOSES}]->(r:{DIETARY_RULE})
       -[:{ACTS_ON}]->(n:{NUTRIENT})
@@ -459,6 +470,12 @@ class ContractClient:
         row["ingredient_lines"] = row.get("ingredient_lines") or []
         row["directions"] = row.get("directions") or []
         return row
+
+    def recipe_nutrients_for_dish(self, dish_id: str) -> list[dict[str, Any]]:
+        """The per-serving nutrient rows of the dish's primary recipe (its as-authored variant), each
+        `{nutrient_id, amount, source, confidence, unit}`, for the recipe view's nutrition table.
+        Empty when the recipe has no materialized as-authored variant."""
+        return self._read(_RECIPE_NUTRIENTS_FOR_DISH, dish_id=dish_id)
 
     def dish_nutrient_stats(self, dish_id: str) -> dict[str, DishNutrientStat]:
         """Per-nutrient distribution statistics across a Dish's versions (contract Section 5), keyed
